@@ -1,3 +1,5 @@
+<img src="lxcwatch/static/icon.svg" alt="" width="64" height="64">
+
 # lxcwatch
 
 A dashboard for the LXCs in a Proxmox cluster. For each container it shows the installed app version, the version `update` would install, and pending OS packages. You can run updates from the page, and can take a snapshot first so you can roll back.

@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lxcwatch</title>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#4f46e5">
 <script>try { const t = JSON.parse(localStorage.getItem("lxcwatch.theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
 :root {
@@ -145,9 +150,12 @@ a.ext::after { content: " ↗"; font-size: .85em; }
 </head>
 <body>
 <header class="hero">
-  <div>
+  <div style="display:flex;gap:12px;align-items:center">
+    <img src="/icon.svg" alt="" width="36" height="36" style="border-radius:9px;box-shadow:0 0 0 1px rgba(255,255,255,.25)">
+    <div>
     <h1>lxcwatch</h1>
     <div class="muted small" id="scaninfo">Loading…</div>
+    </div>
   </div>
   <div class="actions" style="align-items:center">
     <details class="conn" id="conn"><summary><span class="dot"></span><span>Connecting…</span></summary></details>

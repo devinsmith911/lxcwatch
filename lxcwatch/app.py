@@ -74,7 +74,7 @@ def _authorized(header: str) -> bool:
 
 @app.middleware("http")
 async def auth(request: Request, call_next):
-    if request.url.path == "/healthz":
+    if request.url.path in ("/healthz", "/manifest.webmanifest") or request.url.path in PUBLIC_FILES:
         return await call_next(request)
     if not _authorized(request.headers.get("authorization", "")):
         return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="lxcwatch"'})
@@ -88,6 +88,45 @@ async def auth(request: Request, call_next):
 @app.get("/healthz")
 async def healthz():
     return {"ok": True}
+
+
+# Icons are fetched by browsers and home-screen shortcuts without credentials.
+PUBLIC_FILES = {
+    "/favicon.ico": "image/x-icon",
+    "/icon.svg": "image/svg+xml",
+    "/icon-192.png": "image/png",
+    "/icon-512.png": "image/png",
+    "/apple-touch-icon.png": "image/png",
+}
+MANIFEST = {
+    "name": "lxcwatch",
+    "short_name": "lxcwatch",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#f3f5fb",
+    "theme_color": "#4f46e5",
+    "icons": [
+        {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+        {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"},
+        {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"},
+    ],
+}
+
+
+@app.get("/manifest.webmanifest")
+async def manifest():
+    return JSONResponse(MANIFEST, media_type="application/manifest+json")
+
+
+def _public_file(path: str):
+    async def handler():
+        return FileResponse(os.path.join(STATIC, path.lstrip("/")), media_type=PUBLIC_FILES[path],
+                            headers={"Cache-Control": "public, max-age=86400"})
+    return handler
+
+
+for _path in PUBLIC_FILES:
+    app.add_api_route(_path, _public_file(_path), methods=["GET"], include_in_schema=False)
 
 
 @app.get("/")
