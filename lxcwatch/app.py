@@ -297,7 +297,7 @@ class UpdateRequest(BaseModel):
     vmids: list[int]
     kind: str  # app | os
     snapshot: bool = False
-    restart: str = "auto"  # OS updates only: auto | always | never
+    restart: str = "auto"  # package updates only: auto | always | never
 
 
 class BatchRequest(BaseModel):

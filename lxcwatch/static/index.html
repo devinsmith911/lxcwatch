@@ -194,7 +194,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   <table>
     <thead><tr>
       <th style="width:28px"><input type="checkbox" id="selall" aria-label="Select all"></th>
-      <th>Container</th><th>App</th><th>OS packages</th><th>Scanned</th><th></th>
+      <th>Container</th><th>App</th><th>Packages</th><th>Scanned</th><th></th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
@@ -214,7 +214,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   <span id="bulkcount"></span>
   <label class="check"><input type="checkbox" id="bulksnap"> Snapshot first</label>
   <button id="bulkapp" class="primary">Update apps</button>
-  <button id="bulkos">Update OS packages</button>
+  <button id="bulkos">Update packages</button>
   <button id="bulkclear">Clear</button>
 </div>
 
@@ -231,15 +231,15 @@ a.ext::after { content: " ↗"; font-size: .85em; }
     <h3 style="margin-top:0">Update all</h3>
     <div class="actions">
       <label class="toggle"><input type="checkbox" id="allapp" checked> Apps <span class="muted small" id="allappn"></span></label>
-      <label class="toggle"><input type="checkbox" id="allos" checked> OS packages <span class="muted small" id="allosn"></span></label>
+      <label class="toggle"><input type="checkbox" id="allos" checked> Packages <span class="muted small" id="allosn"></span></label>
     </div>
     <div class="picklist" id="allpick"></div>
     <div class="muted small" id="allsummary"></div>
     <p><label class="check"><input type="checkbox" id="allsnap"> Take a snapshot before each update</label></p>
-    <p id="allrestartwrap"><label class="check">Restart after OS updates
+    <p id="allrestartwrap"><label class="check">Restart after package updates
       <select id="allrestart"><option value="auto">Only if needed</option><option value="always">Always</option><option value="never">Never</option></select></label></p>
     <p><label class="check"><input type="checkbox" id="allstop"> Stop at the first failure</label></p>
-    <p class="muted small">Runs one container at a time; with both selected, each container's app update runs before its OS update. It keeps going if you close this page.</p>
+    <p class="muted small">Runs one container at a time; with both selected, each container's app update runs before its package update. It keeps going if you close this page.</p>
     <div class="actions" style="justify-content:flex-end">
       <button value="cancel">Cancel</button>
       <button value="ok" class="primary" id="allgo">Start</button>
@@ -362,7 +362,7 @@ function compHtml(c) {
   });
   if (c.components.some(x => x.pending)) parts.push(`<span class="badge bad">last update did not finish</span>`);
   if (retired(c)) parts.push(`<span class="badge bad" title="${esc(c.script_state.message || "")}">script retired</span>`);
-  if (!parts.length) parts.push(`<span class="muted small">${esc(c.script)} · updates via OS packages</span>`);
+  if (!parts.length) parts.push(`<span class="muted small">${esc(c.script)} · updates via packages</span>`);
   return parts.join("");
 }
 
@@ -380,7 +380,7 @@ function rowHtml(c) {
   const status = running ? "" : ` <span class="badge">${esc(c.status)}</span>`;
   const err = c.error ? `<div class="err small">${esc(c.error)}</div>` : "";
   const upErr = c.upstream_errors.length ? `<div class="err small">${esc(c.upstream_errors.join("; "))}</div>` : "";
-  const job = busy ? `<span class="badge warn">updating…</span>` : c.last_job?.status === "failed" ? `<span class="badge bad">last ${esc(c.last_job.kind)} job failed</span>` : "";
+  const job = busy ? `<span class="badge warn">updating…</span>` : c.last_job?.status === "failed" ? `<span class="badge bad">last ${esc(KIND_LABEL[c.last_job.kind] || c.last_job.kind)} failed</span>` : "";
   return `<tr class="r-${rowState(c)}${state.selected.has(c.vmid) ? " selected" : ""}">
     <td><input type="checkbox" data-sel="${c.vmid}" ${state.selected.has(c.vmid) ? "checked" : ""} aria-label="Select ${c.vmid}"></td>
     <td><div class="name"><span class="dot" title="${rowState(c)}"></span>${c.vmid} · ${esc(c.name)}${status}</div>
@@ -392,7 +392,7 @@ function rowHtml(c) {
     <td><div class="actions">
       ${job}
       <button data-act="app" data-id="${c.vmid}" ${!running || busy || !c.script ? "disabled" : ""} class="${c.outdated ? "primary" : ""}">Update app</button>
-      <button data-act="os" data-id="${c.vmid}" ${!running || busy || !c.pkgmgr ? "disabled" : ""}>Update OS</button>
+      <button data-act="os" data-id="${c.vmid}" ${!running || busy || !c.pkgmgr ? "disabled" : ""}>Update packages</button>
       <button data-act="details" data-id="${c.vmid}">Details</button>
     </div></td></tr>`;
 }
@@ -491,6 +491,7 @@ async function openUpdateAll() {
   } catch (e) { alert(e.message); }
 }
 
+const KIND_LABEL = { app: "app update", os: "package update", release: "release upgrade", restart: "restart", rollback: "rollback" };
 const STEP_BADGE = { pending: "", running: "warn", success: "ok", failed: "bad", skipped: "info" };
 const STEP_ICON = { pending: "○", running: "◐", success: "✓", failed: "✗", skipped: "–" };
 
@@ -501,13 +502,13 @@ function renderBatch(b) {
   const failed = b.steps.filter(s => s.status === "failed").length;
   const cur = b.steps.find(s => s.status === "running");
   const title = b.status === "running"
-    ? `Updating all · ${done} of ${b.steps.length} done${cur ? ` · now ${cur.vmid} ${esc(cur.name)} (${cur.kind === "app" ? "app" : "OS"})` : ""}`
+    ? `Updating all · ${done} of ${b.steps.length} done${cur ? ` · now ${cur.vmid} ${esc(cur.name)} (${cur.kind === "app" ? "app" : "packages"})` : ""}`
     : `Update all ${b.status === "done" ? "finished" : b.status === "stopped" ? "stopped" : "failed"} · ${b.steps.filter(s => s.status === "success").length} succeeded${failed ? `, ${failed} failed` : ""}${b.steps.some(s => s.status === "skipped") ? `, ${b.steps.filter(s => s.status === "skipped").length} skipped` : ""}`;
   box.innerHTML = `<div class="batch">
     <div class="head"><b>${title}</b>
       ${b.status === "running" ? `<button id="batchstop" ${state.batchStopping ? "disabled" : ""}>${state.batchStopping ? "Stopping after current…" : "Stop"}</button>` : `<button id="batchdismiss">Dismiss</button>`}</div>
     <div class="bar"><div style="width:${Math.round(done / b.steps.length * 100)}%"></div></div>
-    <div class="steps">${b.steps.map(s => `<span class="badge ${STEP_BADGE[s.status]}" ${s.job ? `data-job="${esc(s.job)}" data-jobvmid="${s.vmid}" title="Show log"` : ""} ${s.note ? `title="${esc(s.note)}"` : ""}>${STEP_ICON[s.status]} ${s.vmid} ${esc(s.name)} · ${s.kind === "app" ? "app" : "OS"}${s.note && s.status !== "running" ? ` — ${esc(s.note)}` : ""}</span>`).join("")}</div>
+    <div class="steps">${b.steps.map(s => `<span class="badge ${STEP_BADGE[s.status]}" ${s.job ? `data-job="${esc(s.job)}" data-jobvmid="${s.vmid}" title="Show log"` : ""} ${s.note ? `title="${esc(s.note)}"` : ""}>${STEP_ICON[s.status]} ${s.vmid} ${esc(s.name)} · ${s.kind === "app" ? "app" : "packages"}${s.note && s.status !== "running" ? ` — ${esc(s.note)}` : ""}</span>`).join("")}</div>
   </div>`;
   if (b.status !== "running") state.batchStopping = false;
 }
@@ -583,10 +584,10 @@ async function refresh() {
 
 function confirmUpdate(kind, vmids) {
   const cs = state.data.containers.filter(c => vmids.includes(c.vmid));
-  $("#ctitle").textContent = kind === "app" ? `Run the app update on ${cs.length} container${cs.length > 1 ? "s" : ""}?` : `Upgrade OS packages on ${cs.length} container${cs.length > 1 ? "s" : ""}?`;
+  $("#ctitle").textContent = kind === "app" ? `Run the app update on ${cs.length} container${cs.length > 1 ? "s" : ""}?` : `Update packages on ${cs.length} container${cs.length > 1 ? "s" : ""}?`;
   $("#cbody").innerHTML = `<div class="list">${cs.map(c => {
     const what = kind === "app"
-      ? (c.components.filter(x => x.state === "outdated").map(x => `${esc(x.name)} ${esc(x.installed)} → ${esc(x.target)}${x.release_url ? ` <a class="ext" href="${esc(x.release_url)}" target="_blank" rel="noopener">notes</a>` : ""}`).join(", ") || "runs <code>update</code> (also upgrades OS packages)")
+      ? (c.components.filter(x => x.state === "outdated").map(x => `${esc(x.name)} ${esc(x.installed)} → ${esc(x.target)}${x.release_url ? ` <a class="ext" href="${esc(x.release_url)}" target="_blank" rel="noopener">notes</a>` : ""}`).join(", ") || "runs <code>update</code> (also updates packages)")
       : `${c.pkg_count} package${c.pkg_count === 1 ? "" : "s"}`;
     return `<div><span>${c.vmid} · ${esc(c.name)}</span><span class="muted small">${what}</span></div>`;
   }).join("")}</div>`;
@@ -653,12 +654,12 @@ function renderDetails(first) {
   else if (dr.snaps) snaps = dr.snaps.value.length ? `<div class="list">${dr.snaps.value.map(s => `<div><span>${esc(s.name)} <span class="muted small">${s.snaptime ? new Date(s.snaptime * 1000).toLocaleString() : ""} ${esc(s.description || "")}</span></span>
       <span class="actions"><button data-rollback="${esc(s.name)}" ${c.job ? "disabled" : ""}>Roll back</button><button class="danger" data-delsnap="${esc(s.name)}" ${c.job ? "disabled" : ""}>Delete</button></span></div>`).join("")}</div>` : `<p class="muted">No snapshots.</p>`;
   let jobs = `<p class="muted">Loading…</p>`;
-  if (dr.jobs?.status === "fulfilled") jobs = dr.jobs.value.length ? `<div class="list">${dr.jobs.value.map(j => `<div><span>${esc(j.kind)} · ${new Date(j.created_at * 1000).toLocaleString()}</span>
+  if (dr.jobs?.status === "fulfilled") jobs = dr.jobs.value.length ? `<div class="list">${dr.jobs.value.map(j => `<div><span>${esc(KIND_LABEL[j.kind] || j.kind)} · ${new Date(j.created_at * 1000).toLocaleString()}</span>
       <span class="actions"><span class="badge ${j.status === "success" ? "ok" : j.status === "failed" ? "bad" : "warn"}">${esc(j.status)}${j.rc != null && j.rc !== 0 ? ` (${j.rc})` : ""}</span><button data-job="${esc(j.id)}">Log</button></span></div>`).join("")}</div>` : `<p class="muted">No jobs yet.</p>`;
   $("#dbody").innerHTML = `
     <div class="actions">
       <button data-act="app" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.script ? "disabled" : ""} class="primary">Update app</button>
-      <button data-act="os" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.pkgmgr ? "disabled" : ""}>Update OS</button>
+      <button data-act="os" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.pkgmgr ? "disabled" : ""}>Update packages</button>
       <button data-restart="${c.vmid}" ${c.status !== "running" || c.job ? "disabled" : ""} class="${c.restart_needed ? "primary" : ""}">Restart</button>
       <button data-rescan="${c.vmid}" ${c.scanning || c.status !== "running" ? "disabled" : ""}>${c.scanning ? "Scanning…" : "Rescan"}</button>
       ${c.job ? `<button data-job="${esc(c.job)}">Live log</button>` : ""}
@@ -680,7 +681,7 @@ function renderDetails(first) {
       <span><b>Debian ${c.release.current} (${esc(c.release.from)}) → ${c.release.target} (${esc(c.release.to)})</b> is available${c.release.target < c.release.stable ? `, one step towards Debian ${c.release.stable}` : ""}.</span>
       <button class="primary" data-release="${c.vmid}" ${c.status !== "running" || c.job ? "disabled" : ""}>Upgrade to Debian ${c.release.target}…</button></div>
       <div class="muted" style="margin-top:4px">Runs pre-checks first. Switches the official Debian sources, upgrades every package and restarts the container.</div></div>` : ""}
-    <h3>Pending OS packages (${c.pkg_count})</h3>${pk}
+    <h3>Pending packages (${c.pkg_count})</h3>${pk}
     <h3>Snapshots</h3>${snaps}
     <h3>Job history</h3>${jobs}`;
 }

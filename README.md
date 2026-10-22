@@ -2,7 +2,7 @@
 
 # lxcwatch
 
-A dashboard for the LXCs in a Proxmox cluster. For each container it shows the installed app version, the version `update` would install, and pending OS packages. You can run updates from the page, and can take a snapshot first so you can roll back.
+A dashboard for the LXCs in a Proxmox cluster. For each container it shows the installed app version, the version `update` would install, and pending package updates. You can run updates from the page, and can take a snapshot first so you can roll back.
 
 It's built for containers created with the [community-scripts](https://community-scripts.org) (`update` inside the LXC). Other containers still get OS package tracking and updates.
 
@@ -18,12 +18,12 @@ lxcwatch logs in to your Proxmox nodes over SSH. It needs nothing installed in t
 - **Target version:** lxcwatch fetches the container's `ct/<app>.sh`, finds its `check_for_gh_release "<app>" "<owner/repo>" [pin]` calls, and asks GitHub, Codeberg or GitLab for the latest release. If the script pins a version (Immich does), the pin is the target. That matches what `update` would actually do.
 - **Update:**
   1. Writes a small job script to the node and starts it detached (`setsid nohup`).
-  2. The job runs `pct snapshot` (if you ticked it), then either `pct exec <id> -- env PHS_SILENT=1 update` for an app update or `apt-get dist-upgrade` / `apk upgrade` for OS packages.
+  2. The job runs `pct snapshot` (if you ticked it), then either `pct exec <id> -- env PHS_SILENT=1 update` for an app update or `apt-get dist-upgrade` / `apk upgrade` for a package update.
   3. lxcwatch streams the job's log to the browser.
   4. After a successful update it rescans the container and prunes old `lxcwatch-*` snapshots.
 
   Restarting lxcwatch doesn't interrupt a running update. It reattaches on startup.
-- **Update all:** pick apps, OS packages or both, untick anything you want to leave out, and lxcwatch updates the containers one at a time. With both selected, each container's app update runs before its OS update, and the next update only starts after the previous one and its rescan finish. The run happens on the server, so closing the page doesn't stop it. Stop finishes the current update and skips the rest. If lxcwatch restarts mid-run, the update in progress completes, but the rest of the queue is dropped.
+- **Update all:** pick apps, packages or both, untick anything you want to leave out, and lxcwatch updates the containers one at a time. With both selected, each container's app update runs before its package update, and the next update only starts after the previous one and its rescan finish. The run happens on the server, so closing the page doesn't stop it. Stop finishes the current update and skips the rest. If lxcwatch restarts mid-run, the update in progress completes, but the rest of the queue is dropped.
 - **Notify:** after a scheduled scan, anything new is sent to ntfy and/or a webhook, once per version.
 
 Nothing updates automatically. Updates only run when you click one of the update buttons.
@@ -79,7 +79,7 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 - **Signing in:** the web UI has a sign-in page that sets a 30-day session cookie (HttpOnly, SameSite=Strict, and Secure when served over HTTPS). Changing `LXCWATCH_PASSWORD` signs everyone out. After 10 failed attempts from one address, that address is locked out for 15 minutes. Scripts can keep using HTTP basic auth, e.g. `curl -u admin:… https://lxcwatch/api/containers`. If you run it behind a reverse proxy, pass `X-Forwarded-Proto` so the cookie gets the Secure flag.
 - **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph). Snapshots are off by default; tick "Take a snapshot first" in the update dialog to get one. If the snapshot fails, nothing is changed and the job fails. Containers whose bind mounts block snapshots fail the same way.
 - **GitHub token in updates:** the token goes to the container's `update` through stdin, never on a command line, so it doesn't show up in `ps` or in the job log. On the node it's a root-only file in `/var/log/lxcwatch`, deleted as soon as the update exits.
-- **Restarting after OS updates:** containers share the host kernel, so an upgrade never needs a reboot for a new kernel. Running services do keep using the old libraries (OpenSSL, libc and so on) until they restart. lxcwatch detects processes still running replaced code (marked "(deleted)" in `/proc/*/maps`) and shows **restart needed**. The OS update dialog can restart the container afterwards: only if needed (the default), always or never. Each container also has a Restart button (`pct reboot`).
+- **Restarting after package updates:** containers share the host kernel, so an upgrade never needs a reboot for a new kernel. Running services do keep using the old libraries (OpenSSL, libc and so on) until they restart. lxcwatch detects processes still running replaced code (marked "(deleted)" in `/proc/*/maps`) and shows **restart needed**. The package update dialog can restart the container afterwards: only if needed (the default), always or never. Each container also has a Restart button (`pct reboot`).
 - **Debian release upgrades** (e.g. 12 → 13): scans flag containers behind Debian stable, which is read from Debian's mirror, so new releases are picked up automatically. The upgrade runs from the container's details panel, one major version at a time, and isn't part of Update all. Before starting, lxcwatch checks:
   - free disk space;
   - held packages;
@@ -91,7 +91,7 @@ All configuration comes from environment variables. See [.env.example](.env.exam
   The job then takes a snapshot (ticked by default), brings the current release up to date, switches only the official `*.debian.org` sources (a backup tarball is saved in `/root`), runs `upgrade --without-new-pkgs` and `full-upgrade` keeping your config files, and restarts the container. If anything fails part-way, roll back to the snapshot.
 - **Rolling back** restores the whole container, including app data written since the snapshot.
 - **"Untracked"** means lxcwatch found a version file that no release check in the script refers to. **"Unknown"** means the installed or upstream version couldn't be determined.
-- Apps installed from apt repositories (Jellyfin, Pi-hole, AdGuard and similar) have no GitHub release check. Their updates show up under OS packages.
+- Apps installed from apt repositories (Jellyfin, Pi-hole, AdGuard and similar) have no GitHub release check. Their updates show up under Packages.
 
 ## Development
 

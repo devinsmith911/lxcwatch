@@ -1,8 +1,8 @@
-"""'Update all': run app and/or OS updates across containers, one at a time.
+"""'Update all': run app and/or package updates across containers, one at a time.
 
 Each step is an ordinary job; the batch starts it, waits for it (and its
 follow-up rescan) to finish, then moves on. Per container the app update runs
-before the OS update. The queue lives in memory: if lxcwatch restarts, the
+before the package update. The queue lives in memory: if lxcwatch restarts, the
 running job is resumed as usual but the rest of the batch is dropped.
 """
 
@@ -39,7 +39,7 @@ class Batches:
             raise BatchError("an update-all run is already in progress")
         kinds = [k for k in ("app", "os") if k in kinds]
         if not kinds:
-            raise BatchError("pick apps, OS packages or both")
+            raise BatchError("pick apps, packages or both")
         names = {c["vmid"]: c["name"] for c in self.db.containers()}
         steps = [
             {"vmid": vmid, "name": names.get(vmid, ""), "kind": kind, "status": "pending", "job": None, "note": None}

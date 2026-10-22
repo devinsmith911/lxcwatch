@@ -90,7 +90,7 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
             "fi",
         ]
     elif kind == "os":
-        lines += [f"echo '[lxcwatch] upgrading OS packages'", f"pct exec {vmid} -- {OS_CMD} </dev/null", "rc=$?"]
+        lines += [f"echo '[lxcwatch] updating packages'", f"pct exec {vmid} -- {OS_CMD} </dev/null", "rc=$?"]
         if restart == "always":
             lines += [
                 "if [ $rc -eq 0 ]; then",
