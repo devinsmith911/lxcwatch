@@ -280,7 +280,9 @@ const needsUpdate = c => c.outdated > 0 || c.pkg_count > 0;
 const isUnknown = c => c.status === "running" && (!c.scanned_at || !c.script
   || (c.components.length > 0 && c.components.every(x => x.state === "unknown" || x.state === "untracked")));
 const rowState = c => c.status !== "running" ? "stopped" : c.pkg_security ? "security" : needsUpdate(c) ? "outdated" : isUnknown(c) ? "unknown" : "current";
-const problem = c => c.error || c.failures?.some(f => !f.superseded) || c.upstream_errors.length || c.components.some(x => x.pending) || c.script_state?.state === "deleted" || c.last_job?.status === "failed";
+// community-scripts reports removed scripts as state "deleted" or found: false with a message.
+const retired = c => !!c.script_state && (c.script_state.state === "deleted" || (c.script_state.found === false && !!c.script_state.message));
+const problem = c => c.error || c.failures?.some(f => !f.superseded) || c.upstream_errors.length || c.components.some(x => x.pending) || retired(c) || c.last_job?.status === "failed";
 
 function visible() {
   const q = state.q.toLowerCase();
@@ -308,10 +310,11 @@ function compHtml(c) {
       const behind = x.pinned && x.upstream && x.upstream !== x.target ? ` <span class="badge" title="community-scripts pins ${esc(x.target)}; upstream has ${esc(x.upstream)}">pinned</span>` : "";
       return `<div class="comp">${name} ${esc(x.installed)} <span class="badge ok">current</span>${behind}</div>`;
     }
+    if (x.missing_version) return `<div class="comp" title="No ${esc(x.version_file)} yet; the next app update records it">${name} <span class="badge info">version unknown</span>${x.target ? ` <span class="muted small">latest ${esc(x.target)}</span>` : ""}</div>`;
     return `<div class="comp">${name} ${esc(x.installed ?? "?")} <span class="badge info">${x.state === "untracked" ? "untracked" : "unknown"}</span></div>`;
   });
   if (c.components.some(x => x.pending)) parts.push(`<span class="badge bad">last update did not finish</span>`);
-  if (c.script_state?.state === "deleted") parts.push(`<span class="badge bad">removed from community-scripts</span>`);
+  if (retired(c)) parts.push(`<span class="badge bad" title="${esc(c.script_state.message || "")}">script retired</span>`);
   if (!parts.length) parts.push(`<span class="muted small">${esc(c.script)} · updates via OS packages</span>`);
   return parts.join("");
 }
@@ -506,6 +509,10 @@ function renderDetails(first) {
     </div>
     ${c.error ? `<p class="err">${esc(c.error)}</p>` : ""}
     <h3>App versions</h3>${scriptLinks}${comps}
+    ${retired(c) ? `<div class="whatsnew small" style="border-color:color-mix(in srgb, var(--bad) 35%, var(--border));background:color-mix(in srgb, var(--bad) 6%, var(--panel))">
+      <b>The ${esc(c.script)} script was retired by community-scripts.</b> ${esc(c.script_state.message || "")}
+      <div class="muted" style="margin-top:4px">If it was replaced by another script, its update may ask a question before switching over (Jellyseerr and Overseerr ask to migrate to Seerr). lxcwatch can't answer prompts, so run <code>update</code> once yourself in the container's console, then rescan.</div></div>` : ""}
+    ${c.components.some(x => x.missing_version) ? `<p class="whatsnew small">${c.components.filter(x => x.missing_version).map(x => `<b>${esc(x.name)}</b> has no version file (<code>${esc(x.version_file)}</code>) yet, so lxcwatch can't tell which version is installed. This is normal right after a script migration. The next app update installs the latest release and records it.`).join(" ")}</p>` : ""}
     ${(c.failures || []).map(f => `<div class="whatsnew small" style="${f.superseded ? "" : "border-color:color-mix(in srgb, var(--bad) 35%, var(--border));background:color-mix(in srgb, var(--bad) 6%, var(--panel))"}">
       <div class="head"><b>A community-script failed in this container${f.code != null ? ` (exit ${f.code})` : ""}${f.at ? `, ${new Date(f.at * 1000).toLocaleString()}` : ""}</b>
         <button data-clearfail="${c.vmid}" ${c.job ? "disabled" : ""}>Dismiss</button></div>

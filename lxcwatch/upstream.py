@@ -148,18 +148,20 @@ def build_components(checks: list[Check], versions: dict[str, str], latest: dict
     by_key = {path.rsplit("/", 1)[-1].lstrip("."): v for path, v in versions.items() if path.startswith("/root/.")}
     used: set[str] = set()
     components = []
-    for c in checks:
+    for i, c in enumerate(checks):
         installed = strip_v(by_key.get(c.key))
         upstream_tag = latest.get((c.forge, c.repo))
         upstream = strip_v(upstream_tag)
         if c.tag_prefix and upstream and upstream.startswith(c.tag_prefix):
             upstream = strip_v(upstream[len(c.tag_prefix):])
         target = strip_v(c.pin) or upstream
-        if installed is None and c.key not in by_key:
-            # The app's version file doesn't exist, e.g. an optional
-            # component (Immich's VectorChord) this container never installed.
-            if c.key + ".pending" not in by_key:
-                continue
+        missing = c.key not in by_key and c.key + ".pending" not in by_key
+        # No version file: skip optional extras (Immich's VectorChord) this
+        # container never installed, but keep the script's main app (its first
+        # check). That one is missing after e.g. a Jellyseerr -> Seerr
+        # migration, until the first update records ~/.seerr.
+        if missing and i > 0:
+            continue
         used.update({c.key, c.key + ".pending"})
         if not installed or not target:
             state = "unknown"
@@ -178,6 +180,8 @@ def build_components(checks: list[Check], versions: dict[str, str], latest: dict
             "upstream": upstream,
             "pinned": bool(c.pin),
             "pending": (c.key + ".pending") in by_key,
+            "version_file": f"/root/.{c.key}",
+            "missing_version": missing,
             "state": state,
             **repo_links(c.forge, c.repo, target_tag),
             "upstream_url": repo_links(c.forge, c.repo, upstream_tag)["release_url"] if c.pin and upstream_tag else None,

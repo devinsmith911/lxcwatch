@@ -283,3 +283,13 @@ def test_parse_success_signals():
     info = parse_probe("update_mtime=1792651000\nver:/root/.app=2.1\nvertime:/root/.app=1792652000\nprobe_ok=1\n")
     assert info["update_mtime"] == 1792651000
     assert info["vertimes"] == {"/root/.app": 1792652000}
+
+
+def test_main_app_shown_without_version_file():
+    checks = [Check("github", "seerr", "seerr-team/seerr", None, None),
+              Check("github", "VectorChord", "tensorchord/VectorChord", "1.1.1", None)]
+    comps = build_components(checks, {}, {("github", "seerr-team/seerr"): "v3.0.1"})
+    # Main app kept as "version unknown"; optional extra still hidden.
+    assert [c["name"] for c in comps] == ["seerr"]
+    assert comps[0]["missing_version"] and comps[0]["state"] == "unknown" and comps[0]["target"] == "3.0.1"
+    assert comps[0]["version_file"] == "/root/.seerr"
