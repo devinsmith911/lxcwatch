@@ -27,6 +27,12 @@ class Cluster:
         self.scanning: set[int] = set()
         self.is_busy = lambda vmid: False  # set by Jobs
         self.last_error: str | None = None
+        self.cluster_name: str | None = None
+        self.node_info: list[dict] = []
+        self.contact: dict = {"ok": None, "at": None, "error": None}
+
+    def addr_override(self, node: str) -> str | None:
+        return self.cfg.node_addresses.get(node)
 
     def addr(self, node: str) -> str:
         return self.cfg.node_addresses.get(node) or self.nodes.get(node) or node
@@ -47,12 +53,23 @@ class Cluster:
         return json.loads(r.out)
 
     async def discover(self) -> list[dict]:
-        status = await self.pvesh("/cluster/status")
-        nodes = {}
+        try:
+            status = await self.pvesh("/cluster/status")
+        except Exception as e:
+            self.contact = {"ok": False, "at": time.time(), "error": str(e)}
+            raise
+        self.contact = {"ok": True, "at": time.time(), "error": None}
+        nodes, info = {}, []
+        self.cluster_name = None
         for entry in status:
-            if entry.get("type") == "node":
+            if entry.get("type") == "cluster":
+                self.cluster_name = entry.get("name")
+            elif entry.get("type") == "node":
                 nodes[entry["name"]] = entry.get("ip") or (self.cfg.pve_host if entry.get("local") else entry["name"])
+                info.append({"name": entry["name"], "address": self.addr_override(entry["name"]) or nodes[entry["name"]],
+                             "online": bool(entry.get("online", 1)), "local": bool(entry.get("local"))})
         self.nodes = nodes
+        self.node_info = sorted(info, key=lambda n: n["name"])
         resources = await self.pvesh("/cluster/resources --type vm")
         cts = [r for r in resources if r.get("type") == "lxc" and not r.get("template")]
         for ct in cts:

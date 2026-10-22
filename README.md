@@ -1,6 +1,6 @@
 # lxcwatch
 
-A dashboard for the LXCs in a Proxmox cluster. For each container it shows the installed app version, the version `update` would install, and pending OS packages. You can run updates from the page, and each one takes a snapshot first so you can roll back.
+A dashboard for the LXCs in a Proxmox cluster. For each container it shows the installed app version, the version `update` would install, and pending OS packages. You can run updates from the page, and can take a snapshot first so you can roll back.
 
 It's built for containers created with the [community-scripts](https://community-scripts.org) (`update` inside the LXC). Other containers still get OS package tracking and updates.
 
@@ -16,7 +16,7 @@ lxcwatch logs in to your Proxmox nodes over SSH. It needs nothing installed in t
 - **Target version:** lxcwatch fetches the container's `ct/<app>.sh`, finds its `check_for_gh_release "<app>" "<owner/repo>" [pin]` calls, and asks GitHub, Codeberg or GitLab for the latest release. If the script pins a version (Immich does), the pin is the target. That matches what `update` would actually do.
 - **Update:**
   1. Writes a small job script to the node and starts it detached (`setsid nohup`).
-  2. The job runs `pct snapshot`, then either `pct exec <id> -- env PHS_SILENT=1 update` for an app update or `apt-get dist-upgrade` / `apk upgrade` for OS packages.
+  2. The job runs `pct snapshot` (if you ticked it), then either `pct exec <id> -- env PHS_SILENT=1 update` for an app update or `apt-get dist-upgrade` / `apk upgrade` for OS packages.
   3. lxcwatch streams the job's log to the browser.
   4. After a successful update it rescans the container and prunes old `lxcwatch-*` snapshots.
 
@@ -72,7 +72,7 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 ## Things to know
 
 - **Security:** the SSH key is effectively root on the whole cluster, and so is anyone who can log in to the web UI. Keep the password strong and the UI off the internet. All POST and DELETE requests need an `X-Requested-With` header, so another site can't trigger an update through your browser.
-- **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph). If a snapshot fails, nothing is changed and the job fails. Untick "Snapshot first" to update anyway. Containers whose bind mounts block snapshots fail the same way.
+- **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph). Snapshots are off by default; tick "Take a snapshot first" in the update dialog to get one. If the snapshot fails, nothing is changed and the job fails. Containers whose bind mounts block snapshots fail the same way.
 - **Rolling back** restores the whole container, including app data written since the snapshot.
 - **"Untracked"** means lxcwatch found a version file that no release check in the script refers to. **"Unknown"** means the installed or upstream version couldn't be determined.
 - Apps installed from apt repositories (Jellyfin, Pi-hole, AdGuard and similar) have no GitHub release check. Their updates show up under OS packages.

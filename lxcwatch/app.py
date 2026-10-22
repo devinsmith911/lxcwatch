@@ -135,6 +135,14 @@ async def containers():
             "error": cluster.last_error,
             "interval_minutes": cfg.scan_interval_minutes,
         },
+        "connection": {
+            "host": cfg.pve_host,
+            "user": cfg.ssh_user,
+            "port": cfg.ssh_port,
+            "cluster": cluster.cluster_name,
+            "nodes": cluster.node_info,
+            **cluster.contact,
+        },
         "now": time.time(),
     }
 
@@ -158,7 +166,7 @@ async def scan_one(vmid: int):
 class UpdateRequest(BaseModel):
     vmids: list[int]
     kind: str  # app | os
-    snapshot: bool = True
+    snapshot: bool = False
 
 
 @app.post("/api/update")
