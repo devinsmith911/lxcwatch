@@ -252,6 +252,14 @@ async function api(path, opts = {}) {
   return body;
 }
 
+function until(ts) {
+  const s = ts - Date.now() / 1000;
+  if (s < 90) return "any moment";
+  if (s < 3600) return `in ${Math.round(s / 60)}m`;
+  if (s < 86400) return `in ${Math.round(s / 3600)}h`;
+  return `in ${Math.round(s / 86400)}d`;
+}
+
 function ago(ts) {
   if (!ts) return "never";
   const s = Math.max(0, Date.now() / 1000 - ts);
@@ -338,7 +346,8 @@ function render() {
   const cs = d.containers;
   const s = d.scan;
   renderConn(d.connection);
-  $("#scaninfo").textContent = s.running ? "Scanning…" : s.last ? `Last scan ${ago(s.last.at)} · ${s.last.count} containers in ${s.last.took}s${s.interval_minutes > 0 ? ` · every ${s.interval_minutes}m` : ""}` : "Not scanned yet";
+  const next = s.next_at ? ` · next ${until(s.next_at)}` : s.interval_minutes > 0 ? "" : " · scheduled scans off";
+  $("#scaninfo").textContent = s.running ? "Scanning…" : `${s.last ? `Last scan ${ago(s.last.at)} · ${s.last.count} containers in ${s.last.took}s` : "Not scanned yet"}${next}`;
   if (s.error) $("#scaninfo").innerHTML += ` · <span class="badge bad">${esc(s.error)}</span>`;
   $("#scanbtn").disabled = s.running;
   const running = cs.filter(c => c.status === "running").length;

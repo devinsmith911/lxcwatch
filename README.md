@@ -64,6 +64,7 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 | `LXCWATCH_SSH_USER` | `root` | A non-root user needs passwordless `sudo` for `pct` and `pvesh` |
 | `LXCWATCH_NODE_ADDRESSES` | — | `pve1=10.0.0.11,...` if the cluster IPs aren't reachable |
 | `LXCWATCH_SCAN_INTERVAL_MINUTES` | `360` | `0` disables scheduled scans |
+| `LXCWATCH_SCAN_ON_STARTUP` | `overdue` | `overdue`: only if the last scan is older than the interval; `always`; `never`. The schedule follows the last scan, including manual ones |
 | `LXCWATCH_REFRESH_PACKAGES` | `true` | Runs `apt-get update` / `apk update` during scans |
 | `LXCWATCH_KEEP_SNAPSHOTS` | `3` | `lxcwatch-*` snapshots kept per CT (`0` = never prune) |
 | `LXCWATCH_GITHUB_TOKEN` | — | Recommended once you have more than about 15 apps (the GitHub limit is 60 requests/hour without a token). Also passed to `update` inside the containers, so app updates don't hit the limit either |

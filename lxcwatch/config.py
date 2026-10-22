@@ -35,6 +35,7 @@ class Config:
     password: str
     data_dir: str
     scan_interval_minutes: int
+    scan_on_startup: str  # overdue | always | never
     refresh_packages: bool
     keep_snapshots: int
     job_concurrency: int
@@ -58,6 +59,9 @@ def load() -> Config:
     missing = [n for n, v in (("LXCWATCH_PVE_HOST", pve_host), ("LXCWATCH_PASSWORD", password)) if not v]
     if missing:
         raise SystemExit(f"missing required environment variables: {', '.join(missing)}")
+    scan_on_startup = (_env("SCAN_ON_STARTUP", "overdue") or "overdue").lower()
+    if scan_on_startup not in ("overdue", "always", "never"):
+        raise SystemExit("LXCWATCH_SCAN_ON_STARTUP must be overdue, always or never")
     notify_packages = (_env("NOTIFY_PACKAGES", "security") or "security").lower()
     if notify_packages not in ("none", "security", "all"):
         raise SystemExit("LXCWATCH_NOTIFY_PACKAGES must be none, security or all")
@@ -71,6 +75,7 @@ def load() -> Config:
         password=password,
         data_dir=_env("DATA_DIR", "./data"),
         scan_interval_minutes=int(_env("SCAN_INTERVAL_MINUTES", "360")),
+        scan_on_startup=scan_on_startup,
         refresh_packages=_bool("REFRESH_PACKAGES", True),
         keep_snapshots=int(_env("KEEP_SNAPSHOTS", "3")),
         job_concurrency=int(_env("JOB_CONCURRENCY", "2")),

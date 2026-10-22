@@ -36,16 +36,47 @@ async def full_scan() -> None:
     await notify.send(cfg, db, upstream.http)
 
 
+# Scheduled scans run one interval after the last scan (scheduled, manual or
+# a failed attempt), so restarting lxcwatch doesn't trigger a scan by itself.
+STARTED_AT = time.time()
+last_attempt = 0.0
+
+
+def last_scan_at() -> float:
+    raw = db.get("last_scan")
+    return json.loads(raw)["at"] if raw else 0.0
+
+
+def next_scan_at() -> float | None:
+    if cfg.scan_interval_minutes <= 0:
+        return None
+    base = max(last_scan_at(), last_attempt)
+    if cfg.scan_on_startup == "never":
+        base = max(base, STARTED_AT)
+    return base + cfg.scan_interval_minutes * 60
+
+
+async def scheduled_scan() -> None:
+    global last_attempt
+    last_attempt = time.time()
+    try:
+        await full_scan()
+    except Exception:
+        log.exception("scheduled scan failed")
+
+
 async def scheduler() -> None:
     await asyncio.sleep(5)
+    if cfg.scan_on_startup == "always" or (cfg.scan_on_startup == "overdue" and not last_scan_at()):
+        await scheduled_scan()
     while True:
-        try:
-            await full_scan()
-        except Exception:
-            log.exception("scheduled scan failed")
-        if cfg.scan_interval_minutes <= 0:
+        due = next_scan_at()
+        if due is None:
             return
-        await asyncio.sleep(cfg.scan_interval_minutes * 60)
+        # Re-check every minute: a manual scan in the meantime moves the schedule.
+        if time.time() >= due and not cluster.scan_lock.locked():
+            await scheduled_scan()
+        await asyncio.sleep(min(60, max(1, due - time.time())))
 
 
 @contextlib.asynccontextmanager
@@ -178,6 +209,7 @@ async def containers():
             "last": json.loads(last) if last else None,
             "error": cluster.last_error,
             "interval_minutes": cfg.scan_interval_minutes,
+            "next_at": next_scan_at(),
         },
         "connection": {
             "host": cfg.pve_host,
