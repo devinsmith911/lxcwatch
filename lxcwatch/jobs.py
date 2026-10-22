@@ -28,7 +28,9 @@ KINDS = ("app", "os", "rollback")
 
 # Community-scripts' `update` runs its silent path when PHS_SILENT=1 (and
 # whenever there is no TTY), picking the default answer for every menu.
-APP_CMD = "env PHS_SILENT=1 TERM=dumb update"
+# TERM must be a real terminal type: the scripts call `clear`, which exits 1
+# (killing the update) under TERM=dumb or with TERM unset.
+APP_CMD = "env PHS_SILENT=1 TERM=xterm-256color update"
 OS_CMD = "sh -c " + shlex.quote(
     "if command -v apt-get >/dev/null 2>&1; then "
     "export DEBIAN_FRONTEND=noninteractive; apt-get update && "

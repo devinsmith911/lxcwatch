@@ -112,7 +112,7 @@ def test_clean_line_strips_ansi_and_spinners():
 def test_node_script_shapes():
     s = node_script("j1", 101, "app", "lxcwatch-20261022-000000", None)
     assert "pct snapshot 101 lxcwatch-20261022-000000" in s
-    assert "pct exec 101 -- env PHS_SILENT=1 TERM=dumb update </dev/null" in s
+    assert "pct exec 101 -- env PHS_SILENT=1 TERM=xterm-256color update </dev/null" in s
     assert f"echo '{MARK} 90'" in s
     s = node_script("j2", 102, "rollback", None, "lxcwatch-x")
     assert "pct rollback 102 lxcwatch-x" in s and "pct snapshot" not in s
