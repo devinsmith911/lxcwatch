@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+case "$1" in
+  remove)
+    # The venv was built by postinst, so dpkg doesn't know to remove it.
+    rm -rf /opt/lxcwatch
+    ;;
+  purge)
+    rm -rf /opt/lxcwatch /var/lib/lxcwatch /etc/lxcwatch.env
+    userdel lxcwatch >/dev/null 2>&1 || true
+    ;;
+esac
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+exit 0

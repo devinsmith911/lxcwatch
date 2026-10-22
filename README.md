@@ -30,15 +30,18 @@ Nothing updates automatically. Updates only run when you click one of the update
 
 ## Install (in its own LXC)
 
-1. Create a small Debian 12/13 LXC (1 core, 512 MB is plenty). Then, as root inside it:
+1. Create a small Debian 12/13 or Ubuntu 24.04 LXC (1 core, 512 MB is plenty). Then, as root inside it, add the lxcwatch apt repository and install:
 
    ```sh
-   git clone <this repo> /root/lxcwatch && /root/lxcwatch/deploy/install.sh
+   install -d -m 755 /etc/apt/keyrings
+   curl -fsSL https://devinsmith911.github.io/lxcwatch/lxcwatch.asc -o /etc/apt/keyrings/lxcwatch.asc
+   echo "deb [signed-by=/etc/apt/keyrings/lxcwatch.asc] https://devinsmith911.github.io/lxcwatch stable main" > /etc/apt/sources.list.d/lxcwatch.list
+   apt update && apt install lxcwatch
    ```
 
-   The installer creates `/etc/lxcwatch.env` with a random web password and an SSH key, then prints the public key.
+   The package creates the `lxcwatch` user, an SSH key, `/etc/lxcwatch.env` with a random web password (printed during install) and the systemd service. It bundles its Python dependencies, so it doesn't need PyPI.
 
-2. Authorize the key as root on the nodes. On most clusters `/root/.ssh/authorized_keys` is a symlink to `/etc/pve/priv/authorized_keys`, so adding it once covers every node. Check with `ls -l /root/.ssh/authorized_keys`. Otherwise add it on each node.
+2. Authorize the key (`/var/lib/lxcwatch/id_ed25519.pub`) as root on the nodes. On most clusters `/root/.ssh/authorized_keys` is a symlink to `/etc/pve/priv/authorized_keys`, so adding it once covers every node. Check with `ls -l /root/.ssh/authorized_keys`. Otherwise add it on each node.
 
    To limit where the key can be used from, prefix it with the lxcwatch LXC's IP:
 
@@ -46,11 +49,15 @@ Nothing updates automatically. Updates only run when you click one of the update
    from="10.0.0.50" ssh-ed25519 AAAA... lxcwatch@lxcwatch
    ```
 
-3. Set `LXCWATCH_PVE_HOST` in `/etc/lxcwatch.env`, then run `systemctl enable --now lxcwatch`.
+3. Set `LXCWATCH_PVE_HOST` in `/etc/lxcwatch.env`, then run `systemctl restart lxcwatch`.
 
 4. Open `http://<lxc-ip>:8080`, ideally behind your reverse proxy with HTTPS.
 
-To upgrade lxcwatch: `git pull && deploy/install.sh`.
+**Upgrading:** `apt update && apt upgrade`. Every push to `main` publishes a new version (`0.1.<commit count>`), so lxcwatch shows its own update under Packages too. Your config, key and database are kept. `apt purge lxcwatch` removes all of them.
+
+**Moving from a source install** (`deploy/install.sh`): just install the package as above. It takes over the existing user, key, config and database, and removes the old service file and `/opt/lxcwatch/src`.
+
+**From source** (development): `git clone` this repo and run `deploy/install.sh`, which does the same setup from the checkout.
 
 Docker works too: mount `/data`, put your key there, and set the same variables plus `LXCWATCH_SSH_KEY=/data/id_ed25519`.
 
@@ -98,5 +105,6 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 ```sh
 uv venv && uv pip install -e '.[dev]'
 .venv/bin/pytest            # the probe also runs against real Debian/Alpine images when Docker is available
+packaging/build-deb.sh      # builds dist/lxcwatch_<version>_all.deb (needs dpkg-deb; CI uses debian:13)
 LXCWATCH_PVE_HOST=pve1 LXCWATCH_PASSWORD=dev .venv/bin/uvicorn lxcwatch.app:app --reload
 ```

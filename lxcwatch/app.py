@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import config, notify
+from . import __version__, config, notify
 from .auth import COOKIE, Auth
 from .batch import BatchError, Batches
 from .cluster import Cluster
@@ -265,6 +265,7 @@ async def containers():
             "next_at": next_scan_at(),
         },
         "batch": batches.current,
+        "version": __version__,
         "connection": {
             "host": cfg.pve_host,
             "user": cfg.ssh_user,

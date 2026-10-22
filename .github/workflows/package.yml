@@ -1,0 +1,83 @@
+name: Test and publish package
+
+# Every push to main publishes lxcwatch_<base>.<commit count>_all.deb to this
+# owner's Debian registry (distribution "stable", component "main").
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**'
+      - '!**.md'
+  workflow_dispatch:
+
+# Runs queue rather than cancel, so versions publish in order.
+concurrency:
+  group: package
+  cancel-in-progress: false
+
+env:
+  REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+  PACKAGES_URL: ${{ github.server_url }}/api/packages/${{ github.repository_owner }}/debian
+
+jobs:
+  test:
+    runs-on: self-hosted
+    container:
+      image: debian:13
+    steps:
+      -
+        # Plain git instead of actions/checkout: the debian image has no node.
+        name: Check out
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git ca-certificates python3-venv >/dev/null
+          git clone -q "$REPO_URL" src
+          git -C src checkout -q "${{ github.sha }}"
+      -
+        name: Test
+        working-directory: src
+        run: |
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install -q -e '.[dev]'
+          /tmp/venv/bin/pytest -q
+
+  package:
+    runs-on: self-hosted
+    needs: test
+    container:
+      image: debian:13
+    steps:
+      -
+        # Full history: the version's last part is the commit count.
+        name: Check out
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git ca-certificates curl python3-pip dpkg xz-utils >/dev/null
+          git clone -q "$REPO_URL" src
+          git -C src checkout -q "${{ github.sha }}"
+      -
+        name: Build
+        working-directory: src
+        env:
+          PIP_BREAK_SYSTEM_PACKAGES: "1"
+        run: packaging/build-deb.sh | tee /tmp/built
+      -
+        # The automatic token may not be allowed to write packages; a
+        # PACKAGES_TOKEN secret (token with package write scope) takes precedence.
+        name: Publish
+        env:
+          TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          deb="src/$(tail -n1 /tmp/built)"
+          code=$(curl -s -o /tmp/response -w '%{http_code}' --user "$OWNER:$TOKEN" \
+            --upload-file "$deb" "$PACKAGES_URL/pool/stable/main/upload")
+          case "$code" in
+            201) echo "Published $(basename "$deb")" ;;
+            409) echo "$(basename "$deb") is already published" ;;
+            401|403)
+              echo "the self-hosted git server refused the upload ($code). Add a PACKAGES_TOKEN secret to this repo:"
+              echo "a token of $OWNER with the package (write) scope."
+              cat /tmp/response; exit 1 ;;
+            *) echo "Upload failed ($code)"; cat /tmp/response; exit 1 ;;
+          esac

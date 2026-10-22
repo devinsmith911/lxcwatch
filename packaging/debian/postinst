@@ -1,0 +1,55 @@
+#!/bin/sh
+set -e
+
+APP=/opt/lxcwatch
+DATA=/var/lib/lxcwatch
+ENVFILE=/etc/lxcwatch.env
+WHEELS=/usr/lib/lxcwatch/wheels
+
+[ "$1" = configure ] || exit 0
+
+id lxcwatch >/dev/null 2>&1 || useradd --system --home-dir "$DATA" --shell /usr/sbin/nologin lxcwatch
+install -d -o lxcwatch -g lxcwatch -m 700 "$DATA"
+
+# The venv is rebuilt from the bundled wheels on every install/upgrade, so it
+# always matches this package and the system's Python. No network needed.
+rm -rf "$APP/venv" "$APP/src"
+mkdir -p "$APP"
+python3 -m venv "$APP/venv"
+"$APP/venv/bin/pip" install -q --no-index --find-links "$WHEELS" lxcwatch
+
+if [ ! -f "$DATA/id_ed25519" ]; then
+  runuser -u lxcwatch -- ssh-keygen -q -t ed25519 -N '' -C "lxcwatch@$(hostname)" -f "$DATA/id_ed25519"
+fi
+
+if [ ! -f "$ENVFILE" ]; then
+  password=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')
+  install -m 600 /dev/null "$ENVFILE"
+  sed "s|^LXCWATCH_PASSWORD=.*|LXCWATCH_PASSWORD=$password|" /usr/share/lxcwatch/lxcwatch.env.example > "$ENVFILE"
+  echo "lxcwatch: wrote $ENVFILE (web login: admin / $password)"
+fi
+
+# A unit left by the old source installer (deploy/install.sh) would shadow the
+# packaged one.
+old=/etc/systemd/system/lxcwatch.service
+if [ -f "$old" ] && grep -q 'Proxmox LXC update tracker' "$old"; then
+  rm -f "$old"
+fi
+
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload
+  systemctl enable lxcwatch >/dev/null 2>&1 || true
+  if grep -qE '^LXCWATCH_PVE_HOST=.+' "$ENVFILE"; then
+    systemctl restart lxcwatch
+  else
+    cat <<EOF
+
+lxcwatch is installed. To finish:
+  1. Allow this key to log in as root on your Proxmox nodes:
+     $(cat "$DATA/id_ed25519.pub")
+  2. Set LXCWATCH_PVE_HOST in $ENVFILE to any node's address.
+  3. systemctl restart lxcwatch
+EOF
+  fi
+fi
+exit 0

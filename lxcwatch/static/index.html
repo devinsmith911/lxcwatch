@@ -164,7 +164,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   <div style="display:flex;gap:12px;align-items:center">
     <img src="/icon.svg" alt="" width="36" height="36" style="border-radius:9px;box-shadow:0 0 0 1px rgba(255,255,255,.25)">
     <div>
-    <h1>lxcwatch</h1>
+    <h1>lxcwatch <span class="muted small" id="version" style="font-weight:400"></span></h1>
     <div class="muted small" id="scaninfo">Loading…</div>
     </div>
   </div>
@@ -403,6 +403,7 @@ function render() {
   const cs = d.containers;
   const s = d.scan;
   renderConn(d.connection);
+  $("#version").textContent = d.version && d.version !== "dev" ? `v${d.version}` : "";
   renderBatch(d.batch);
   const next = s.next_at ? ` · next ${until(s.next_at)}` : s.interval_minutes > 0 ? "" : " · scheduled scans off";
   $("#scaninfo").textContent = s.running ? "Scanning…" : `${s.last ? `Last scan ${ago(s.last.at)} · ${s.last.count} containers in ${s.last.took}s` : "Not scanned yet"}${next}`;

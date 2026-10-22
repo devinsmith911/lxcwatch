@@ -1,0 +1,13 @@
+Package: lxcwatch
+Version: @VERSION@
+Section: admin
+Priority: optional
+Architecture: all
+Installed-Size: @SIZE@
+Depends: python3 (>= 3.11), python3-venv, openssh-client, passwd, util-linux
+Maintainer: Devin Smith <me@devinsmith.co.za>
+Homepage: https://github.com/devinsmith911/lxcwatch
+Description: track and update community-scripts LXCs across a Proxmox cluster
+ Web dashboard that shows installed app versions, pending package updates
+ and Debian release upgrades for every LXC in a Proxmox cluster, and runs
+ updates over SSH with optional snapshots and rollback.
