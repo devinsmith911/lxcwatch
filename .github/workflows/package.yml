@@ -66,9 +66,20 @@ jobs:
         # PACKAGES_TOKEN secret (token with package write scope) takes precedence.
         name: Publish
         env:
-          TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+          AUTO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
+          API: ${{ github.server_url }}/api/v1
         run: |
+          if [ -n "$PACKAGES_TOKEN" ]; then
+            TOKEN=$PACKAGES_TOKEN
+            # Say which account the token belongs to (never the token itself).
+            who=$(curl -s -H "Authorization: token $TOKEN" "$API/user" | sed -n 's/.*"login":"\([^"]*\)".*/\1/p')
+            echo "Using the PACKAGES_TOKEN secret (belongs to: ${who:-unknown, or the token lacks the read:user scope})"
+          else
+            TOKEN=$AUTO_TOKEN
+            echo "No PACKAGES_TOKEN secret is visible to this run; using the automatic token."
+          fi
           deb="src/$(tail -n1 /tmp/built)"
           code=$(curl -s -o /tmp/response -w '%{http_code}' --user "$OWNER:$TOKEN" \
             --upload-file "$deb" "$PACKAGES_URL/pool/stable/main/upload")
@@ -76,8 +87,13 @@ jobs:
             201) echo "Published $(basename "$deb")" ;;
             409) echo "$(basename "$deb") is already published" ;;
             401|403)
-              echo "the self-hosted git server refused the upload ($code). Add a PACKAGES_TOKEN secret to this repo:"
-              echo "a token of $OWNER with the package (write) scope."
-              cat /tmp/response; exit 1 ;;
+              echo "the self-hosted git server refused the upload ($code): $(cat /tmp/response)"
+              if [ -n "$PACKAGES_TOKEN" ]; then
+                echo "The PACKAGES_TOKEN secret was used: check it belongs to $OWNER and has package: Read and write."
+              else
+                echo "Add a repository secret (Settings > Actions > Secrets, not Variables) named exactly"
+                echo "PACKAGES_TOKEN: a token of $OWNER with package: Read and write."
+              fi
+              exit 1 ;;
             *) echo "Upload failed ($code)"; cat /tmp/response; exit 1 ;;
           esac
