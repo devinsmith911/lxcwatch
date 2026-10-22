@@ -76,6 +76,12 @@ jobs:
             # Say which account the token belongs to (never the token itself).
             who=$(curl -s -H "Authorization: token $TOKEN" "$API/user" | sed -n 's/.*"login":"\([^"]*\)".*/\1/p')
             echo "Using the PACKAGES_TOKEN secret (belongs to: ${who:-unknown, or the token lacks the read:user scope})"
+            # the self-hosted server's API names a missing scope in its error message.
+            probe=$(curl -s -w ' [%{http_code}]' -H "Authorization: token $TOKEN" "$API/packages/$OWNER?limit=1")
+            case "$probe" in
+              *"[200]") echo "The token can read $OWNER's packages." ;;
+              *) echo "Package API check: $probe" ;;
+            esac
           else
             TOKEN=$AUTO_TOKEN
             echo "No PACKAGES_TOKEN secret is visible to this run; using the automatic token."
