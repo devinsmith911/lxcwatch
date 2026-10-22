@@ -98,3 +98,21 @@ def test_login_lockout(client):
     r = client.post("/api/login", json={"username": "admin", "password": "s3cret"}, headers=H)
     assert r.status_code == 429
     assert COOKIE not in r.headers.get("set-cookie", "")
+
+
+def test_failure_superseded_by_later_success(client):
+    import lxcwatch.app as app_module
+    db = app_module.db
+    db.upsert_seen(101, "pve1", "kuma", "running", "")
+    fail = {"file": ".install-error.failed", "code": 1, "at": 1000, "errinfo": []}
+    db.save_scan(101, {"failures": [fail], "update_mtime": 900, "vertimes": {"/root/.kuma.pending": 5000}}, None)
+    [ct] = app_module.db.containers()
+    assert app_module._summary(ct)["failures"][0]["superseded"] is False  # older entrypoint, pending file ignored
+    db.save_scan(101, {"failures": [fail], "update_mtime": 900, "vertimes": {"/root/.kuma": 2000}}, None)
+    [ct] = app_module.db.containers()
+    assert app_module._summary(ct)["failures"][0]["superseded"] is True  # version written after the failure
+    db.save_scan(101, {"failures": [fail], "update_mtime": 900, "vertimes": {}}, None)
+    db.create_job("j1", 101, "pve1", "app", None)
+    db.update_job("j1", status="success", finished_at=3000)
+    [ct] = app_module.db.containers()
+    assert app_module._summary(ct)["failures"][0]["superseded"] is True  # lxcwatch update succeeded later

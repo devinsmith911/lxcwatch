@@ -277,3 +277,9 @@ def test_probe_reports_failure_flags():
     [fail] = info["failures"]
     assert fail["file"] == ".install-error.failed" and fail["code"] == 1 and fail["at"] > 0
     assert fail["errinfo"] == ["EXIT_CODE=1", "LINE=391", "COMMAND=clear", "--- OUTPUT ---", "boom"]
+
+
+def test_parse_success_signals():
+    info = parse_probe("update_mtime=1792651000\nver:/root/.app=2.1\nvertime:/root/.app=1792652000\nprobe_ok=1\n")
+    assert info["update_mtime"] == 1792651000
+    assert info["vertimes"] == {"/root/.app": 1792652000}

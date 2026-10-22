@@ -202,8 +202,19 @@ async def index():
     return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-cache"})
 
 
+def last_success_at(info: dict, vmid: int) -> float:
+    """Latest sign that a community-script run succeeded in this container."""
+    times = [info.get("update_mtime") or 0]
+    times += [t for path, t in info.get("vertimes", {}).items() if not path.endswith(".pending")]
+    times += [j["finished_at"] or 0 for j in db.jobs(vmid) if j["kind"] == "app" and j["status"] == "success"]
+    return max(times)
+
+
 def _summary(ct: dict) -> dict:
     info = ct["info"] or {}
+    ok_at = last_success_at(info, ct["vmid"]) if info.get("failures") else 0
+    # A failure followed by a successful run is history, not a problem.
+    failures = [{**f, "superseded": bool(f.get("at") and ok_at > f["at"])} for f in info.get("failures", [])]
     comps = info.get("components", [])
     pkgs = info.get("packages", [])
     last = db.jobs(ct["vmid"], limit=1)
@@ -226,7 +237,7 @@ def _summary(ct: dict) -> dict:
         "pkgmgr": info.get("pkgmgr"),
         "reboot_required": info.get("reboot_required", False),
         "stale_procs": info.get("stale_procs", []),
-        "failures": info.get("failures", []),
+        "failures": failures,
         "restart_needed": bool(info.get("reboot_required") or info.get("stale_procs")),
         "upstream_errors": info.get("upstream_errors", []),
         "error": ct["error"],
