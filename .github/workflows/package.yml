@@ -78,13 +78,6 @@ jobs:
             echo "Using the PACKAGES_TOKEN secret (belongs to: ${who:-unknown, or the token lacks the read:user scope})"
             # the self-hosted server's API names a missing scope in its error message.
             probe=$(curl -s -w ' [%{http_code}]' -H "Authorization: token $TOKEN" "$API/packages/$OWNER?limit=1")
-            # Deleting a version that doesn't exist needs write:package: 404 means
-            # the scope is there, 403 says which one is missing.
-            probe=$(curl -s -X DELETE -w ' [%{http_code}]' -H "Authorization: token $TOKEN" "$API/packages/$OWNER/debian/lxcwatch/0.0.0-scope-check")
-            case "$probe" in
-              *"[404]") echo "The token has package write access for $OWNER." ;;
-              *) echo "Package write check: $probe" ;;
-            esac
           else
             TOKEN=$AUTO_TOKEN
             echo "No PACKAGES_TOKEN secret is visible to this run; using the automatic token."
@@ -102,7 +95,14 @@ jobs:
             401|403)
               echo "the self-hosted git server refused the upload ($code): $(cat /tmp/response)"
               if [ -n "$PACKAGES_TOKEN" ]; then
-                echo "The PACKAGES_TOKEN secret was used: check it belongs to $OWNER and has package: Read and write."
+                # the self-hosted git server answers 401 when the account lacks access and 403 when
+                # the token's scopes don't include write:package.
+                if [ "$code" = 403 ]; then
+                  echo "403 means the token is valid but lacks the write:package scope. Create a new token"
+                  echo "with package set to 'Read and write' and replace the PACKAGES_TOKEN secret."
+                else
+                  echo "401 means the token's account can't publish $OWNER's packages; use a token of $OWNER."
+                fi
               else
                 echo "Add a repository secret (Settings > Actions > Secrets, not Variables) named exactly"
                 echo "PACKAGES_TOKEN: a token of $OWNER with package: Read and write."
