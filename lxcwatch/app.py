@@ -1,19 +1,19 @@
 import asyncio
-import base64
 import contextlib
 import json
 import logging
 import os
 import re
-import secrets
 import shlex
 import time
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
 from . import config, notify
+from .auth import COOKIE, Auth
 from .cluster import Cluster
 from .db import DB
 from .jobs import CLEAR_FAILURES, JobError, Jobs
@@ -27,6 +27,7 @@ cfg = config.load()
 db = DB(cfg.data_dir)
 ssh = SSH(cfg)
 upstream = Upstream(cfg)
+auth = Auth(cfg)
 cluster = Cluster(cfg, ssh, db, upstream)
 jobs = Jobs(cfg, ssh, db, cluster)
 STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -92,29 +93,64 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="lxcwatch", lifespan=lifespan, docs_url=None, redoc_url=None)
 
 
-def _authorized(header: str) -> bool:
-    if not header.startswith("Basic "):
-        return False
-    try:
-        user, _, password = base64.b64decode(header[6:]).decode().partition(":")
-    except (ValueError, UnicodeDecodeError):
-        return False
-    ok_user = secrets.compare_digest(user.encode(), cfg.username.encode())
-    ok_pass = secrets.compare_digest(password.encode(), cfg.password.encode())
-    return ok_user and ok_pass
+OPEN_PATHS = {"/healthz", "/manifest.webmanifest", "/login", "/api/login"}
 
 
 @app.middleware("http")
-async def auth(request: Request, call_next):
-    if request.url.path in ("/healthz", "/manifest.webmanifest") or request.url.path in PUBLIC_FILES:
-        return await call_next(request)
-    if not _authorized(request.headers.get("authorization", "")):
-        return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="lxcwatch"'})
-    # Browsers resend cached basic-auth credentials on cross-site form posts;
-    # a custom header can't be added without a CORS preflight we never allow.
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    # Every state-changing request needs this header: a cross-site form can't
+    # add it, and fetch() can't without a CORS preflight we never allow.
     if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("x-requested-with") != "lxcwatch":
         return JSONResponse({"detail": "missing X-Requested-With header"}, status_code=403)
-    return await call_next(request)
+    if path in OPEN_PATHS or path in PUBLIC_FILES:
+        return await call_next(request)
+    if auth.check_session(request.cookies.get(COOKIE)) or auth.check_basic(request.headers.get("authorization", "")):
+        return await call_next(request)
+    if path.startswith("/api/"):
+        return JSONResponse({"detail": "not signed in"}, status_code=401)
+    target = path + (f"?{request.url.query}" if request.url.query else "")
+    return RedirectResponse(f"/login?next={quote(target, safe='')}" if target != "/" else "/login", status_code=303)
+
+
+def _client(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.get("/login")
+async def login_page(request: Request):
+    if auth.check_session(request.cookies.get(COOKIE)):
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(os.path.join(STATIC, "login.html"), headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/api/login")
+async def login(req: LoginRequest, request: Request):
+    client = _client(request)
+    if auth.locked_out(client):
+        raise HTTPException(429, "Too many failed attempts. Try again in a few minutes.")
+    if not auth.check_credentials(req.username, req.password):
+        auth.record_failure(client)
+        log.warning("failed login for %r from %s", req.username, client)
+        raise HTTPException(401, "Wrong username or password.")
+    auth.reset(client)
+    token, max_age = auth.issue()
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(COOKIE, token, max_age=max_age, httponly=True, samesite="strict",
+                    secure=request.url.scheme == "https", path="/")
+    return resp
+
+
+@app.post("/api/logout")
+async def logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(COOKIE, path="/")
+    return resp
 
 
 @app.get("/healthz")

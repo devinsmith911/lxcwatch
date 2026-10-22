@@ -160,6 +160,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   <div class="actions" style="align-items:center">
     <details class="conn" id="conn"><summary><span class="dot"></span><span>Connecting…</span></summary></details>
     <button id="themebtn" title="Theme"></button>
+    <button id="logoutbtn" title="Sign out">Sign out</button>
     <button id="scanbtn" class="primary">Scan now</button>
   </div>
 </header>
@@ -245,8 +246,13 @@ const state = {
   page: 1, pageSize: stored("pageSize", 10), hideStopped: stored("hideStopped", false), hideUnknown: stored("hideUnknown", false),
 };
 
+function toLogin() {
+  location.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+}
+
 async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: { "X-Requested-With": "lxcwatch", "Content-Type": "application/json", ...(opts.headers || {}) } });
+  if (r.status === 401) { toLogin(); throw new Error("Signed out"); }
   const body = r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text();
   if (!r.ok) throw new Error(body?.detail || body || r.statusText);
   return body;
@@ -674,6 +680,10 @@ function applyTheme(t) {
 let theme = stored("theme", "system");
 if (!THEMES[theme]) theme = "system";
 applyTheme(theme);
+$("#logoutbtn").addEventListener("click", async () => {
+  try { await api("/api/logout", { method: "POST" }); } catch {}
+  location.replace("/login");
+});
 $("#themebtn").addEventListener("click", () => {
   const order = Object.keys(THEMES);
   theme = order[(order.indexOf(theme) + 1) % order.length];

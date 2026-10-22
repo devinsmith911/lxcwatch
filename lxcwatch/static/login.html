@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · lxcwatch</title>
+<script>try { const t = JSON.parse(localStorage.getItem("lxcwatch.theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#4f46e5">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f3f5fb; --panel: #ffffff; --text: #1b1f2a; --muted: #636c80; --border: #dde2ee;
+  --accent: #4f46e5; --accent-text: #ffffff; --bad: #c8304a; --bad-bg: #fde6ea;
+  --hero: linear-gradient(120deg, #4338ca 0%, #6d28d9 45%, #0e7490 100%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f1218; --panel: #171b23; --text: #e6e9f0; --muted: #8b94a8; --border: #29303c;
+    --accent: #8b85ff; --accent-text: #0d0f16; --bad: #ff7a90; --bad-bg: #3d1820;
+    --hero: linear-gradient(120deg, #2e2a8a 0%, #4c1d95 45%, #0b5566 100%);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1218; --panel: #171b23; --text: #e6e9f0; --muted: #8b94a8; --border: #29303c;
+  --accent: #8b85ff; --accent-text: #0d0f16; --bad: #ff7a90; --bad-bg: #3d1820;
+  --hero: linear-gradient(120deg, #2e2a8a 0%, #4c1d95 45%, #0b5566 100%);
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.band { background: var(--hero); height: 38vh; min-height: 200px; }
+main { flex: 1; display: flex; justify-content: center; padding: 0 16px 40px; margin-top: calc(-38vh + 60px); }
+.card { width: 100%; max-width: 380px; align-self: flex-start; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 28px 26px 24px; box-shadow: 0 12px 40px rgba(30, 20, 90, .18); }
+.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.brand img { width: 44px; height: 44px; border-radius: 11px; }
+h1 { font-size: 20px; margin: 0; }
+.muted { color: var(--muted); font-size: 13px; }
+label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 6px; }
+input { width: 100%; font: inherit; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
+input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 0; border-color: var(--accent); }
+button { width: 100%; margin-top: 20px; font: inherit; font-weight: 600; padding: 10px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text); cursor: pointer; }
+button:disabled { opacity: .6; cursor: default; }
+.error { display: none; margin-top: 14px; padding: 8px 10px; border-radius: 8px; background: var(--bad-bg); color: var(--bad); font-size: 13px; }
+.error.show { display: block; }
+</style>
+</head>
+<body>
+<div class="band"></div>
+<main>
+  <form class="card" id="form" novalidate>
+    <div class="brand">
+      <img src="/icon.svg" alt="">
+      <div><h1>lxcwatch</h1><div class="muted">Sign in to manage your containers</div></div>
+    </div>
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button id="submit" type="submit">Sign in</button>
+    <div class="error" id="error" role="alert"></div>
+  </form>
+</main>
+<script>
+const form = document.getElementById("form");
+const error = document.getElementById("error");
+const submit = document.getElementById("submit");
+document.getElementById(document.getElementById("username").value ? "password" : "username").focus();
+
+// Only follow relative paths back into lxcwatch, never off-site.
+function nextUrl() {
+  const next = new URLSearchParams(location.search).get("next") || "/";
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
+form.addEventListener("submit", async ev => {
+  ev.preventDefault();
+  error.classList.remove("show");
+  submit.disabled = true;
+  submit.textContent = "Signing in…";
+  try {
+    const r = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "lxcwatch" },
+      body: JSON.stringify({ username: form.username.value.trim(), password: form.password.value }),
+    });
+    if (r.ok) return location.replace(nextUrl());
+    const body = await r.json().catch(() => ({}));
+    error.textContent = body.detail || `Sign in failed (${r.status})`;
+  } catch (e) {
+    error.textContent = "Can't reach lxcwatch.";
+  }
+  error.classList.add("show");
+  submit.disabled = false;
+  submit.textContent = "Sign in";
+  form.password.select();
+});
+</script>
+</body>
+</html>
