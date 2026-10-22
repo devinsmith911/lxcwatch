@@ -78,17 +78,24 @@ jobs:
             echo "Using the PACKAGES_TOKEN secret (belongs to: ${who:-unknown, or the token lacks the read:user scope})"
             # the self-hosted server's API names a missing scope in its error message.
             probe=$(curl -s -w ' [%{http_code}]' -H "Authorization: token $TOKEN" "$API/packages/$OWNER?limit=1")
+            # Deleting a version that doesn't exist needs write:package: 404 means
+            # the scope is there, 403 says which one is missing.
+            probe=$(curl -s -X DELETE -w ' [%{http_code}]' -H "Authorization: token $TOKEN" "$API/packages/$OWNER/debian/lxcwatch/0.0.0-scope-check")
             case "$probe" in
-              *"[200]") echo "The token can read $OWNER's packages." ;;
-              *) echo "Package API check: $probe" ;;
+              *"[404]") echo "The token has package write access for $OWNER." ;;
+              *) echo "Package write check: $probe" ;;
             esac
           else
             TOKEN=$AUTO_TOKEN
             echo "No PACKAGES_TOKEN secret is visible to this run; using the automatic token."
           fi
           deb="src/$(tail -n1 /tmp/built)"
-          code=$(curl -s -o /tmp/response -w '%{http_code}' --user "$OWNER:$TOKEN" \
-            --upload-file "$deb" "$PACKAGES_URL/pool/stable/main/upload")
+          upload() { curl -s -o /tmp/response -w '%{http_code}' "$@" --upload-file "$deb" "$PACKAGES_URL/pool/stable/main/upload"; }
+          code=$(upload --user "$OWNER:$TOKEN")
+          if [ "$code" = 401 ] || [ "$code" = 403 ]; then
+            echo "Basic auth upload got $code; retrying with the token in a header"
+            code=$(upload -H "Authorization: token $TOKEN")
+          fi
           case "$code" in
             201) echo "Published $(basename "$deb")" ;;
             409) echo "$(basename "$deb") is already published" ;;
