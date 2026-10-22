@@ -38,6 +38,7 @@ APP_CMD = "env PHS_SILENT=1 TERM=xterm-256color update"
 APP_CMD_TOKEN = "sh -c " + shlex.quote(
     "IFS= read -r GITHUB_TOKEN; export GITHUB_TOKEN; exec " + APP_CMD + " </dev/null"
 )
+CLEAR_FAILURES = "rm -f /root/.install-*.failed"
 OS_CMD = "sh -c " + shlex.quote(
     "if command -v apt-get >/dev/null 2>&1; then "
     "export DEBIAN_FRONTEND=noninteractive; apt-get update && "
@@ -80,6 +81,13 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
         ]
     elif kind == "app":
         lines += [f"echo '[lxcwatch] running community-scripts update'", f"pct exec {vmid} -- {APP_CMD} </dev/null", "rc=$?"]
+    if kind == "app":
+        # A successful update supersedes failure flags from earlier runs.
+        lines += [
+            "if [ $rc -eq 0 ]; then",
+            f"  pct exec {vmid} -- sh -c {q(CLEAR_FAILURES)} </dev/null",
+            "fi",
+        ]
     elif kind == "os":
         lines += [f"echo '[lxcwatch] upgrading OS packages'", f"pct exec {vmid} -- {OS_CMD} </dev/null", "rc=$?"]
         if restart == "always":

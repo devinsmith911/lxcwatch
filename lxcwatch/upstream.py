@@ -143,7 +143,8 @@ def looks_like_version(value: str | None) -> bool:
 
 def build_components(checks: list[Check], versions: dict[str, str], latest: dict[tuple[str, str], str | None]) -> list[dict]:
     """Join release checks with the version files found in the container."""
-    versions = {p: v for p, v in versions.items() if looks_like_version(v)}
+    versions = {p: v for p, v in versions.items()
+                if looks_like_version(v) and not p.rsplit("/", 1)[-1].startswith(".install-")}
     by_key = {path.rsplit("/", 1)[-1].lstrip("."): v for path, v in versions.items() if path.startswith("/root/.")}
     used: set[str] = set()
     components = []

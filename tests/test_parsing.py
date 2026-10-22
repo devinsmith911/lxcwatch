@@ -249,3 +249,31 @@ def test_probe_skips_hushlogin_and_markers():
                        capture_output=True, text=True, timeout=120)
     info = parse_probe(r.stdout)
     assert info["versions"] == {"/root/.sha": "abc123def", "/root/.cloudflared": "2025.9.1"}, r.stdout
+
+
+def test_parse_failure_flags():
+    info = parse_probe("failed:.install-error.failed=1 1792650000\nerrinfo:.install-error.failed:EXIT_CODE=1\n"
+                       "errinfo:.install-error.failed:COMMAND=clear\nprobe_ok=1\n")
+    assert info["failures"] == [{"file": ".install-error.failed", "code": 1, "at": 1792650000,
+                                 "errinfo": ["EXIT_CODE=1", "COMMAND=clear"]}]
+    # Never shown as an app
+    assert build_components([], {"/root/.install-error.failed": "1"}, {}) == []
+
+
+def test_successful_app_update_clears_failure_flags():
+    s = node_script("j9", 109, "app", None, None)
+    assert "rm -f /root/.install-*.failed" in s
+    assert "rm -f /root/.install-*.failed" not in node_script("j9", 109, "os", None, None)
+
+
+@pytest.mark.skipif(not DOCKER, reason="docker not available")
+def test_probe_reports_failure_flags():
+    setup = ("printf '1\\n' > /root/.install-error.failed; "
+             "printf 'EXIT_CODE=1\\nLINE=391\\nCOMMAND=clear\\n--- OUTPUT ---\\nboom\\n' > /root/.install-error.log.errinfo;\n")
+    r = subprocess.run(["docker", "run", "--rm", "-i", "debian:13", "sh", "-c", setup + probe_script(False)],
+                       capture_output=True, text=True, timeout=120)
+    info = parse_probe(r.stdout)
+    assert info["versions"] == {}, r.stdout
+    [fail] = info["failures"]
+    assert fail["file"] == ".install-error.failed" and fail["code"] == 1 and fail["at"] > 0
+    assert fail["errinfo"] == ["EXIT_CODE=1", "LINE=391", "COMMAND=clear", "--- OUTPUT ---", "boom"]

@@ -30,7 +30,7 @@ fi
 for f in /root/.* /opt/*_version.txt; do
   [ -f "$f" ] || continue
   case "${f##*/}" in
-    .bash*|.profile|.viminfo|.lesshst|.wget-hsts|.selected_editor|.sudo_as_admin_successful|*_history|.gitconfig|.npmrc|.rnd|.hushlogin|.cloud-locale-test.skip) continue ;;
+    .bash*|.profile|.viminfo|.lesshst|.wget-hsts|.selected_editor|.sudo_as_admin_successful|*_history|.gitconfig|.npmrc|.rnd|.hushlogin|.cloud-locale-test.skip|.install-*) continue ;;
   esac
   [ "$(wc -c <"$f")" -le 128 ] || continue
   [ "$(grep -c . "$f")" -le 1 ] || continue
@@ -40,6 +40,15 @@ for f in /root/.* /opt/*_version.txt; do
   case "$v" in ''|*[[:space:]]*) continue ;; esac
   case "$v" in *[0-9]*) ;; *) continue ;; esac
   echo "ver:$f=$v"
+done
+# Failure flags community-scripts leave when a script dies inside the
+# container (.install-error.failed for an `update` run), with its error capture.
+for f in /root/.install-*.failed; do
+  [ -f "$f" ] || continue
+  n=${f##*/}
+  echo "failed:$n=$(head -c 16 "$f" | tr -dc '0-9') $(stat -c %Y "$f" 2>/dev/null)"
+  e="${f%.failed}.log.errinfo"
+  if [ -f "$e" ]; then head -n 40 "$e" | cut -c1-300 | sed "s|^|errinfo:$n:|"; fi
 done
 if command -v apt-get >/dev/null 2>&1; then
   echo "pkgmgr=apt"
@@ -82,12 +91,23 @@ def parse_probe(text: str) -> dict:
         "pkg_refresh_failed": False,
         "reboot_required": False,
         "stale_procs": [],
+        "failures": [],  # [{file, code, at, errinfo}]
         "probe_ok": False,
     }
     for line in text.splitlines():
         if line.startswith("ver:"):
             path, _, value = line[4:].partition("=")
             info["versions"][path] = value
+        elif line.startswith("failed:"):
+            name, _, rest = line[7:].partition("=")
+            code, _, at = rest.partition(" ")
+            info["failures"].append({"file": name, "code": int(code) if code.isdigit() else None,
+                                     "at": int(at) if at.isdigit() else None, "errinfo": []})
+        elif line.startswith("errinfo:"):
+            name, _, text = line[8:].partition(":")
+            for fail in info["failures"]:
+                if fail["file"] == name:
+                    fail["errinfo"].append(text)
         elif line.startswith("pkg:"):
             parts = line[4:].split()
             if len(parts) >= 3:

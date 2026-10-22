@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import secrets
+import shlex
 import time
 
 from fastapi import FastAPI, HTTPException, Request
@@ -15,7 +16,7 @@ from pydantic import BaseModel
 from . import config, notify
 from .cluster import Cluster
 from .db import DB
-from .jobs import JobError, Jobs
+from .jobs import CLEAR_FAILURES, JobError, Jobs
 from .ssh import SSH
 from .upstream import FORGE_WEB, Upstream, compare_url, releases_between
 
@@ -189,6 +190,7 @@ def _summary(ct: dict) -> dict:
         "pkgmgr": info.get("pkgmgr"),
         "reboot_required": info.get("reboot_required", False),
         "stale_procs": info.get("stale_procs", []),
+        "failures": info.get("failures", []),
         "restart_needed": bool(info.get("reboot_required") or info.get("stale_procs")),
         "upstream_errors": info.get("upstream_errors", []),
         "error": ct["error"],
@@ -267,6 +269,24 @@ async def snapshots(vmid: int):
         raise HTTPException(404, "container not found")
     except Exception as e:
         raise HTTPException(502, str(e))
+
+
+@app.post("/api/containers/{vmid}/clear-failures")
+async def clear_failures(vmid: int):
+    """Delete community-scripts failure flags in the container (logs are kept)."""
+    ct = db.container(vmid)
+    if not ct:
+        raise HTTPException(404, "container not found")
+    if ct["status"] != "running":
+        raise HTTPException(409, "container is not running")
+    if jobs.busy(vmid):
+        raise HTTPException(409, "a job is running on this container")
+    addr = await cluster.resolve(ct["node"])
+    r = await ssh.run(addr, f"pct exec {vmid} -- sh -c {shlex.quote(CLEAR_FAILURES)}", timeout=60)
+    if not r.ok:
+        raise HTTPException(502, r.err.strip() or f"exit {r.rc}")
+    await cluster.scan_one(vmid)
+    return _summary(db.container(vmid))
 
 
 @app.post("/api/containers/{vmid}/restart")

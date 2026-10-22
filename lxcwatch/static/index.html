@@ -274,7 +274,7 @@ const needsUpdate = c => c.outdated > 0 || c.pkg_count > 0;
 const isUnknown = c => c.status === "running" && (!c.scanned_at || !c.script
   || (c.components.length > 0 && c.components.every(x => x.state === "unknown" || x.state === "untracked")));
 const rowState = c => c.status !== "running" ? "stopped" : c.pkg_security ? "security" : needsUpdate(c) ? "outdated" : isUnknown(c) ? "unknown" : "current";
-const problem = c => c.error || c.upstream_errors.length || c.components.some(x => x.pending) || c.script_state?.state === "deleted" || c.last_job?.status === "failed";
+const problem = c => c.error || c.failures?.length || c.upstream_errors.length || c.components.some(x => x.pending) || c.script_state?.state === "deleted" || c.last_job?.status === "failed";
 
 function visible() {
   const q = state.q.toLowerCase();
@@ -305,6 +305,7 @@ function compHtml(c) {
     return `<div class="comp">${name} ${esc(x.installed ?? "?")} <span class="badge info">${x.state === "untracked" ? "untracked" : "unknown"}</span></div>`;
   });
   if (c.components.some(x => x.pending)) parts.push(`<span class="badge bad">last update did not finish</span>`);
+  for (const f of c.failures || []) parts.push(`<span class="badge bad" title="${esc(f.file)}">script failed${f.code != null ? ` (exit ${f.code})` : ""}${f.at ? ` · ${ago(f.at)}` : ""}</span>`);
   if (c.script_state?.state === "deleted") parts.push(`<span class="badge bad">removed from community-scripts</span>`);
   if (!parts.length) parts.push(`<span class="muted small">${esc(c.script)} · updates via OS packages</span>`);
   return parts.join("");
@@ -500,6 +501,12 @@ function renderDetails(first) {
     </div>
     ${c.error ? `<p class="err">${esc(c.error)}</p>` : ""}
     <h3>App versions</h3>${scriptLinks}${comps}
+    ${(c.failures || []).map(f => `<div class="whatsnew small" style="border-color:color-mix(in srgb, var(--bad) 35%, var(--border));background:color-mix(in srgb, var(--bad) 6%, var(--panel))">
+      <div class="head"><b>A community-script failed in this container${f.code != null ? ` (exit ${f.code})` : ""}${f.at ? `, ${new Date(f.at * 1000).toLocaleString()}` : ""}</b>
+        <button data-clearfail="${c.vmid}" ${c.job ? "disabled" : ""}>Dismiss</button></div>
+      <div class="muted">Left behind as <code>/root/${esc(f.file)}</code>. A successful app update clears it too.</div>
+      ${f.errinfo.length ? `<pre class="log" style="margin-top:8px;max-height:240px">${esc(f.errinfo.join("\n"))}</pre>` : ""}
+    </div>`).join("")}
     ${c.restart_needed ? `<p class="whatsnew small"><b>Restart needed.</b> ${c.stale_procs.length ? `These are still running code that an update replaced: <code>${esc(c.stale_procs.join(", "))}</code>` : "The container reports that it needs a reboot."}</p>` : ""}
     <h3>Pending OS packages (${c.pkg_count})</h3>${pk}
     <h3>Snapshots</h3>${snaps}
@@ -628,6 +635,12 @@ document.addEventListener("click", async ev => {
     const c = state.data.containers.find(x => x.vmid === id); if (c) c.scanning = true; render();
     await api(`/api/containers/${id}/scan`, { method: "POST" }).catch(e => alert(e.message));
     refresh();
+  } else if (t.dataset.clearfail) {
+    const vmid = Number(t.dataset.clearfail);
+    if (!confirm(`Dismiss the failure flag in CT ${vmid}? The install log stays.`)) return;
+    t.disabled = true;
+    try { await api(`/api/containers/${vmid}/clear-failures`, { method: "POST" }); await refresh(); }
+    catch (e) { alert(e.message); t.disabled = false; }
   } else if (t.dataset.restart) {
     const vmid = Number(t.dataset.restart);
     if (!confirm(`Restart CT ${vmid}? Its services will be briefly unavailable.`)) return;
