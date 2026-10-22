@@ -5,6 +5,11 @@ containers alike. It only reads state; the optional package index refresh
 (apt-get update / apk update) is the one thing it changes.
 """
 
+# Processes still running code that an upgrade replaced: their memory maps
+# show the old library/binary as "(deleted)". In an LXC (shared host kernel)
+# this, not a kernel update, is why you restart after upgrading packages.
+STALE_PROCS = r"""for m in /proc/[0-9]*/maps; do grep -qsE '/(usr|lib|lib64|bin|sbin|opt)/[^ ]* \(deleted\)$' "$m" && cat "${m%/maps}/comm" 2>/dev/null; done | sort -u | head -n 20 | tr '\n' ' '"""
+
 PROBE = r"""
 REFRESH=__REFRESH__
 if [ -r /etc/os-release ]; then . /etc/os-release; fi
@@ -51,12 +56,14 @@ else
   echo "pkgmgr=unknown"
 fi
 if [ -f /var/run/reboot-required ]; then echo "reboot_required=1"; fi
+stale=$(__STALE__)
+if [ -n "$stale" ]; then echo "stale_procs=$stale"; fi
 echo "probe_ok=1"
 """
 
 
 def probe_script(refresh: bool) -> str:
-    return PROBE.replace("__REFRESH__", "1" if refresh else "0")
+    return PROBE.replace("__REFRESH__", "1" if refresh else "0").replace("__STALE__", STALE_PROCS)
 
 
 def parse_probe(text: str) -> dict:
@@ -71,6 +78,7 @@ def parse_probe(text: str) -> dict:
         "packages": [],
         "pkg_refresh_failed": False,
         "reboot_required": False,
+        "stale_procs": [],
         "probe_ok": False,
     }
     for line in text.splitlines():
@@ -88,7 +96,9 @@ def parse_probe(text: str) -> dict:
                 })
         elif "=" in line:
             key, _, value = line.partition("=")
-            if key in ("pkg_refresh_failed", "reboot_required", "probe_ok"):
+            if key == "stale_procs":
+                info["stale_procs"] = value.split()
+            elif key in ("pkg_refresh_failed", "reboot_required", "probe_ok"):
                 info[key] = value == "1"
             elif key in info:
                 info[key] = value or None

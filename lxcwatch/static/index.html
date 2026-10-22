@@ -209,6 +209,13 @@ a.ext::after { content: " ↗"; font-size: .85em; }
     <h3 id="ctitle" style="margin-top:0"></h3>
     <div id="cbody"></div>
     <p><label class="check" id="csnapwrap"><input type="checkbox" id="csnap"> Take a snapshot first</label></p>
+    <p id="crestartwrap"><label class="check">Restart afterwards
+      <select id="crestart">
+        <option value="auto">Only if needed</option>
+        <option value="always">Always</option>
+        <option value="never">Never</option>
+      </select></label>
+      <span class="muted small" style="display:block;margin-top:4px">"Only if needed" restarts the container when services are still running replaced libraries or binaries.</span></p>
     <div class="actions" style="justify-content:flex-end">
       <button value="cancel">Cancel</button>
       <button value="ok" class="primary" id="cok">Update</button>
@@ -289,8 +296,9 @@ function compHtml(c) {
 
 function pkgHtml(c) {
   if (!c.pkgmgr) return `<span class="muted">—</span>`;
-  if (!c.pkg_count) return `<span class="badge ok">up to date</span>${c.reboot_required ? ' <span class="badge warn">reboot</span>' : ""}`;
-  return `<span class="badge warn">${c.pkg_count} pending</span>${c.pkg_security ? ` <span class="badge bad">${c.pkg_security} security</span>` : ""}${c.reboot_required ? ' <span class="badge warn">reboot</span>' : ""}`;
+  const restart = c.restart_needed ? ` <span class="badge warn" title="${esc(c.stale_procs.length ? `Still running replaced code: ${c.stale_procs.join(", ")}` : "The container asks for a reboot")}">restart needed</span>` : "";
+  if (!c.pkg_count) return `<span class="badge ok">up to date</span>${restart}`;
+  return `<span class="badge warn">${c.pkg_count} pending</span>${c.pkg_security ? ` <span class="badge bad">${c.pkg_security} security</span>` : ""}${restart}`;
 }
 
 function rowHtml(c) {
@@ -401,17 +409,20 @@ function confirmUpdate(kind, vmids) {
     return `<div><span>${c.vmid} · ${esc(c.name)}</span><span class="muted small">${what}</span></div>`;
   }).join("")}</div>`;
   $("#csnap").checked = $("#bulksnap").checked;
+  $("#crestartwrap").hidden = kind !== "os";
+  $("#crestart").value = stored("restart", "auto");
   const dlg = $("#confirm");
   dlg.returnValue = "";
   dlg.showModal();
-  return new Promise(res => dlg.addEventListener("close", () => res(dlg.returnValue === "ok" ? { snapshot: $("#csnap").checked } : null), { once: true }));
+  return new Promise(res => dlg.addEventListener("close", () => res(dlg.returnValue === "ok" ? { snapshot: $("#csnap").checked, restart: $("#crestart").value } : null), { once: true }));
 }
 
 async function startUpdate(kind, vmids) {
   const ok = await confirmUpdate(kind, vmids);
   if (!ok) return;
   try {
-    const r = await api("/api/update", { method: "POST", body: JSON.stringify({ vmids, kind, snapshot: ok.snapshot }) });
+    if (kind === "os") store("restart", ok.restart);
+    const r = await api("/api/update", { method: "POST", body: JSON.stringify({ vmids, kind, snapshot: ok.snapshot, restart: ok.restart }) });
     const errs = Object.entries(r.errors);
     if (errs.length) alert(errs.map(([id, e]) => `${id}: ${e}`).join("\n"));
     const started = Object.entries(r.jobs);
@@ -466,11 +477,13 @@ function renderDetails(first) {
     <div class="actions">
       <button data-act="app" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.script ? "disabled" : ""} class="primary">Update app</button>
       <button data-act="os" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.pkgmgr ? "disabled" : ""}>Update OS</button>
+      <button data-restart="${c.vmid}" ${c.status !== "running" || c.job ? "disabled" : ""} class="${c.restart_needed ? "primary" : ""}">Restart</button>
       <button data-rescan="${c.vmid}" ${c.scanning || c.status !== "running" ? "disabled" : ""}>${c.scanning ? "Scanning…" : "Rescan"}</button>
       ${c.job ? `<button data-job="${esc(c.job)}">Live log</button>` : ""}
     </div>
     ${c.error ? `<p class="err">${esc(c.error)}</p>` : ""}
     <h3>App versions</h3>${scriptLinks}${comps}
+    ${c.restart_needed ? `<p class="whatsnew small"><b>Restart needed.</b> ${c.stale_procs.length ? `These are still running code that an update replaced: <code>${esc(c.stale_procs.join(", "))}</code>` : "The container reports that it needs a reboot."}</p>` : ""}
     <h3>Pending OS packages (${c.pkg_count})</h3>${pk}
     <h3>Snapshots</h3>${snaps}
     <h3>Job history</h3>${jobs}`;
@@ -598,6 +611,11 @@ document.addEventListener("click", async ev => {
     const c = state.data.containers.find(x => x.vmid === id); if (c) c.scanning = true; render();
     await api(`/api/containers/${id}/scan`, { method: "POST" }).catch(e => alert(e.message));
     refresh();
+  } else if (t.dataset.restart) {
+    const vmid = Number(t.dataset.restart);
+    if (!confirm(`Restart CT ${vmid}? Its services will be briefly unavailable.`)) return;
+    try { const r = await api(`/api/containers/${vmid}/restart`, { method: "POST" }); openJob(r.job, vmid); refresh(); }
+    catch (e) { alert(e.message); }
   } else if (t.dataset.rollback) {
     const vmid = state.drawer.vmid, name = t.dataset.rollback;
     if (!confirm(`Roll CT ${vmid} back to ${name}? Everything changed since that snapshot is lost. The container is restarted if it was running.`)) return;

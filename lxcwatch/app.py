@@ -118,6 +118,8 @@ def _summary(ct: dict) -> dict:
         "pkg_security": sum(1 for p in pkgs if p["security"]),
         "pkgmgr": info.get("pkgmgr"),
         "reboot_required": info.get("reboot_required", False),
+        "stale_procs": info.get("stale_procs", []),
+        "restart_needed": bool(info.get("reboot_required") or info.get("stale_procs")),
         "upstream_errors": info.get("upstream_errors", []),
         "error": ct["error"],
         "scanned_at": ct["scanned_at"],
@@ -170,6 +172,7 @@ class UpdateRequest(BaseModel):
     vmids: list[int]
     kind: str  # app | os
     snapshot: bool = False
+    restart: str = "auto"  # OS updates only: auto | always | never
 
 
 @app.post("/api/update")
@@ -179,7 +182,7 @@ async def update(req: UpdateRequest):
     started, errors = {}, {}
     for vmid in req.vmids:
         try:
-            started[vmid] = jobs.start(vmid, req.kind, req.snapshot)
+            started[vmid] = jobs.start(vmid, req.kind, req.snapshot, restart=req.restart)
         except JobError as e:
             errors[vmid] = str(e)
     return {"jobs": started, "errors": errors}
@@ -193,6 +196,14 @@ async def snapshots(vmid: int):
         raise HTTPException(404, "container not found")
     except Exception as e:
         raise HTTPException(502, str(e))
+
+
+@app.post("/api/containers/{vmid}/restart")
+async def restart(vmid: int):
+    try:
+        return {"job": jobs.start(vmid, "restart", False)}
+    except JobError as e:
+        raise HTTPException(409, str(e))
 
 
 @app.post("/api/containers/{vmid}/snapshots/{name}/rollback")

@@ -210,3 +210,27 @@ def test_token_reaches_update_via_stdin():
     r = subprocess.run(["docker", "run", "--rm", "-i", "debian:13", "sh", "-c", fake_update + APP_CMD_TOKEN],
                        input="ghp_example123\n", capture_output=True, text=True, timeout=120)
     assert r.stdout.strip() == "token=ghp_example123 silent=1 term=xterm-256color", r.stderr
+
+
+def test_restart_modes_in_node_script():
+    auto = node_script("j5", 105, "os", None, None, restart="auto")
+    assert "pct reboot 105" in auto and "deleted" in auto and "no restart needed" in auto
+    assert "pct reboot" in node_script("j6", 105, "os", None, None, restart="always")
+    assert "pct reboot" not in node_script("j7", 105, "os", None, None, restart="never")
+    assert "pct reboot 106" in node_script("j8", 106, "restart", None, None)
+    for script in (auto, node_script("j8", 106, "restart", None, None)):
+        subprocess.run(["bash", "-n"], input=script.encode(), check=True)
+
+
+@pytest.mark.skipif(not DOCKER, reason="docker not available")
+def test_stale_process_detection():
+    from lxcwatch.probe import STALE_PROCS
+    # Copy sleep to a lib path, run it, then delete the file: the process now
+    # maps a deleted binary, exactly like a service after an upgrade.
+    setup = "mkdir -p /usr/lib/x && cp /bin/sleep /usr/lib/x/oldsvc && (/usr/lib/x/oldsvc 30 &) && sleep 0.5 && rm /usr/lib/x/oldsvc && "
+    r = subprocess.run(["docker", "run", "--rm", "debian:13", "sh", "-c", setup + "echo \"[$(" + STALE_PROCS + ")]\""],
+                       capture_output=True, text=True, timeout=120)
+    assert r.stdout.strip() == "[oldsvc ]", (r.stdout, r.stderr)
+    clean = subprocess.run(["docker", "run", "--rm", "debian:13", "sh", "-c", "echo \"[$(" + STALE_PROCS + ")]\""],
+                           capture_output=True, text=True, timeout=120)
+    assert clean.stdout.strip() == "[]", clean.stdout

@@ -17,6 +17,7 @@ import time
 from .cluster import SNAPSHOT_NAME_RE, Cluster
 from .config import Config
 from .db import DB
+from .probe import STALE_PROCS
 from .ssh import SSH
 
 log = logging.getLogger(__name__)
@@ -24,7 +25,8 @@ log = logging.getLogger(__name__)
 LOGDIR = "/var/log/lxcwatch"
 MARK = "__LXCWATCH_EXIT__"
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][A-Za-z0-9]|\x1b[=>78]")
-KINDS = ("app", "os", "rollback")
+KINDS = ("app", "os", "rollback", "restart")
+RESTART_MODES = ("auto", "always", "never")
 
 # Community-scripts' `update` runs its silent path when PHS_SILENT=1 (and
 # whenever there is no TTY), picking the default answer for every menu.
@@ -51,7 +53,8 @@ def clean_line(raw: bytes) -> str:
     return parts[-1].rstrip() if parts else ""
 
 
-def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target: str | None, token: bool = False) -> str:
+def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target: str | None,
+                token: bool = False, restart: str = "never") -> str:
     q = shlex.quote
     token_file = f"{LOGDIR}/{job_id}.token"
     lines = [
@@ -79,6 +82,29 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
         lines += [f"echo '[lxcwatch] running community-scripts update'", f"pct exec {vmid} -- {APP_CMD} </dev/null", "rc=$?"]
     elif kind == "os":
         lines += [f"echo '[lxcwatch] upgrading OS packages'", f"pct exec {vmid} -- {OS_CMD} </dev/null", "rc=$?"]
+        if restart == "always":
+            lines += [
+                "if [ $rc -eq 0 ]; then",
+                "  echo '[lxcwatch] restarting container'",
+                f"  pct reboot {vmid}; rc=$?",
+                "fi",
+            ]
+        elif restart == "auto":
+            check = q(f'test -f /var/run/reboot-required && echo "(reboot-required)"; {STALE_PROCS}')
+            lines += [
+                "if [ $rc -eq 0 ]; then",
+                f"  stale=$(pct exec {vmid} -- sh -c {check} </dev/null)",
+                '  if [ -n "$(echo $stale)" ]; then',
+                '    echo "[lxcwatch] still running replaced code: $stale"',
+                "    echo '[lxcwatch] restarting container'",
+                f"    pct reboot {vmid}; rc=$?",
+                "  else",
+                "    echo '[lxcwatch] no restart needed'",
+                "  fi",
+                "fi",
+            ]
+    elif kind == "restart":
+        lines += ["echo '[lxcwatch] restarting container'", f"pct reboot {vmid}", "rc=$?"]
     elif kind == "rollback":
         lines += [
             f"was_running=$(pct status {vmid} | grep -q running && echo 1)",
@@ -116,15 +142,17 @@ class Jobs:
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
 
-    def start(self, vmid: int, kind: str, snapshot: bool, target: str | None = None) -> str:
+    def start(self, vmid: int, kind: str, snapshot: bool, target: str | None = None, restart: str = "never") -> str:
         if kind not in KINDS:
             raise JobError(f"unknown job kind {kind!r}")
+        if restart not in RESTART_MODES:
+            raise JobError(f"restart must be one of {', '.join(RESTART_MODES)}")
         row = self.db.container(vmid)
         if not row:
             raise JobError(f"CT {vmid} not found")
         if self.busy(vmid):
             raise JobError(f"CT {vmid} already has a job running")
-        if kind in ("app", "os") and row["status"] != "running":
+        if kind in ("app", "os", "restart") and row["status"] != "running":
             raise JobError(f"CT {vmid} is {row['status']}, start it first")
         if kind == "app" and not (row["info"] or {}).get("script"):
             raise JobError(f"CT {vmid} has no community-scripts update command")
@@ -132,10 +160,10 @@ class Jobs:
             raise JobError("rollback needs a valid snapshot name")
         stamp = time.strftime("%Y%m%d-%H%M%S")
         job_id = f"{stamp}-{vmid}-{secrets.token_hex(2)}"
-        snap = f"lxcwatch-{stamp}" if snapshot and kind != "rollback" else None
+        snap = f"lxcwatch-{stamp}" if snapshot and kind in ("app", "os") else None
         self.db.create_job(job_id, vmid, row["node"], kind, snap or target)
         self.active[vmid] = job_id
-        self._spawn(self._run(job_id, vmid, row["node"], kind, snap, target))
+        self._spawn(self._run(job_id, vmid, row["node"], kind, snap, target, restart if kind == "os" else "never"))
         return job_id
 
     def resume(self) -> None:
@@ -161,13 +189,13 @@ class Jobs:
         except Exception as e:
             self._fail(job["id"], job["vmid"], e)
 
-    async def _run(self, job_id: str, vmid: int, node: str, kind: str, snap: str | None, target: str | None) -> None:
+    async def _run(self, job_id: str, vmid: int, node: str, kind: str, snap: str | None, target: str | None, restart: str) -> None:
         try:
             async with self.sem:
                 self.db.update_job(job_id, status="running")
                 addr = await self.cluster.resolve(node)
                 token = kind == "app" and bool(self.cfg.github_token)
-                script = node_script(job_id, vmid, kind, snap, target, token=token)
+                script = node_script(job_id, vmid, kind, snap, target, token=token, restart=restart)
                 base = f"{LOGDIR}/{job_id}"
                 prep = f"mkdir -p {LOGDIR} && chmod 700 {LOGDIR}"
                 if token:
