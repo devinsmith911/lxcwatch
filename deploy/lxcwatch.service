@@ -1,0 +1,23 @@
+[Unit]
+Description=lxcwatch - Proxmox LXC update tracker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=lxcwatch
+Group=lxcwatch
+EnvironmentFile=/etc/lxcwatch.env
+Environment=LXCWATCH_DATA_DIR=/var/lib/lxcwatch
+Environment=LXCWATCH_SSH_KEY=/var/lib/lxcwatch/id_ed25519
+Environment=HOME=/var/lib/lxcwatch
+ExecStart=/opt/lxcwatch/venv/bin/uvicorn lxcwatch.app:app --host 0.0.0.0 --port 8080 --proxy-headers --no-access-log
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/lxcwatch
+
+[Install]
+WantedBy=multi-user.target

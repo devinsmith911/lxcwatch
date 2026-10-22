@@ -1,0 +1,73 @@
+"""Tell someone when a scan finds something new to update."""
+
+import hashlib
+import logging
+
+import httpx
+
+from .config import Config
+from .db import DB
+
+log = logging.getLogger(__name__)
+
+
+def collect(cfg: Config, db: DB) -> tuple[list[str], list[str]]:
+    """Return (message lines, dedupe keys) for updates not yet notified."""
+    lines: list[str] = []
+    keys: list[str] = []
+    for ct in db.containers():
+        info = ct["info"]
+        if not info:
+            continue
+        label = f"{ct['vmid']} {ct['name']}"
+        for comp in info.get("components", []):
+            if comp["state"] != "outdated":
+                continue
+            key = f"{ct['vmid']}:app:{comp['name']}:{comp['target']}"
+            if not db.was_notified(key):
+                lines.append(f"{label}: {comp['name']} {comp['installed']} → {comp['target']}")
+                keys.append(key)
+        if cfg.notify_packages == "none":
+            continue
+        pkgs = info.get("packages", [])
+        if cfg.notify_packages == "security":
+            pkgs = [p for p in pkgs if p["security"]]
+        if not pkgs:
+            continue
+        digest = hashlib.sha1("\n".join(sorted(f"{p['name']}={p['to']}" for p in pkgs)).encode()).hexdigest()[:16]
+        key = f"{ct['vmid']}:pkg:{digest}"
+        if not db.was_notified(key):
+            kind = "security update" if cfg.notify_packages == "security" else "package update"
+            lines.append(f"{label}: {len(pkgs)} {kind}{'s' if len(pkgs) != 1 else ''}")
+            keys.append(key)
+    return lines, keys
+
+
+async def send(cfg: Config, db: DB, http: httpx.AsyncClient) -> None:
+    lines, keys = collect(cfg, db)
+    if not lines:
+        return
+    title = f"{len(lines)} LXC update{'s' if len(lines) != 1 else ''} available"
+    body = "\n".join(lines)
+    delivered = not (cfg.ntfy_url or cfg.webhook_url)  # nothing configured: just record them
+    if cfg.ntfy_url:
+        headers = {"Title": title, "Tags": "package"}
+        if cfg.ntfy_token:
+            headers["Authorization"] = f"Bearer {cfg.ntfy_token}"
+        if cfg.public_url:
+            headers["Click"] = cfg.public_url
+        try:
+            (await http.post(cfg.ntfy_url, content=body.encode(), headers=headers)).raise_for_status()
+            delivered = True
+        except httpx.HTTPError as e:
+            log.warning("ntfy notification failed: %s", e)
+    if cfg.webhook_url:
+        try:
+            r = await http.post(cfg.webhook_url, json={"title": title, "message": body, "items": lines, "url": cfg.public_url})
+            r.raise_for_status()
+            delivered = True
+        except httpx.HTTPError as e:
+            log.warning("webhook notification failed: %s", e)
+    if delivered:
+        for key in keys:
+            db.mark_notified(key)
