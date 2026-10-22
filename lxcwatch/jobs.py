@@ -140,6 +140,7 @@ class Jobs:
         self.active: dict[int, str] = {}
         self.subs: dict[str, set[asyncio.Queue]] = {}
         self.tasks: set[asyncio.Task] = set()
+        self.done: dict[str, asyncio.Event] = {}
         cluster.is_busy = self.busy
 
     def busy(self, vmid: int) -> bool:
@@ -282,6 +283,15 @@ class Jobs:
         for q in self.subs.get(job_id, ()):
             q.put_nowait(line)
 
+    async def wait(self, job_id: str) -> dict:
+        """Wait for a job to finish; returns its final row."""
+        event = self.done.setdefault(job_id, asyncio.Event())
+        job = self.db.job(job_id)
+        if job and job["status"] in ("queued", "running"):
+            await event.wait()
+        self.done.pop(job_id, None)
+        return self.db.job(job_id)
+
     def _close(self, job_id: str, vmid: int) -> None:
         self.active.pop(vmid, None)
         for q in self.subs.get(job_id, ()):
@@ -292,6 +302,7 @@ class Jobs:
         self._emit(job_id, f"[lxcwatch] error: {error}")
         self.db.update_job(job_id, status="failed", finished_at=time.time())
         self._close(job_id, vmid)
+        self._settled(job_id)
 
     async def _finish(self, job_id: str, vmid: int, node: str, kind: str, snap: str | None, rc: int) -> None:
         status = "success" if rc == 0 else "failed"
@@ -306,7 +317,16 @@ class Jobs:
             self._emit(job_id, f"[lxcwatch] update failed; snapshot {snap} is available to roll back to")
         self.db.update_job(job_id, status=status, rc=rc, finished_at=time.time())
         self._close(job_id, vmid)
-        await self.cluster.scan_one(vmid)
+        try:
+            await self.cluster.scan_one(vmid)
+        finally:
+            self._settled(job_id)
+
+    def _settled(self, job_id: str) -> None:
+        """Job finished and its follow-up rescan is done; wake wait()ers."""
+        event = self.done.get(job_id)
+        if event:
+            event.set()
 
     async def _prune(self, job_id: str, vmid: int) -> None:
         try:

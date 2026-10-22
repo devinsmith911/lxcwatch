@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from . import config, notify
 from .auth import COOKIE, Auth
+from .batch import BatchError, Batches
 from .cluster import Cluster
 from .db import DB
 from .jobs import CLEAR_FAILURES, JobError, Jobs
@@ -30,6 +31,7 @@ upstream = Upstream(cfg)
 auth = Auth(cfg)
 cluster = Cluster(cfg, ssh, db, upstream)
 jobs = Jobs(cfg, ssh, db, cluster)
+batches = Batches(db, jobs)
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 
@@ -260,6 +262,7 @@ async def containers():
             "interval_minutes": cfg.scan_interval_minutes,
             "next_at": next_scan_at(),
         },
+        "batch": batches.current,
         "connection": {
             "host": cfg.pve_host,
             "user": cfg.ssh_user,
@@ -293,6 +296,37 @@ class UpdateRequest(BaseModel):
     kind: str  # app | os
     snapshot: bool = False
     restart: str = "auto"  # OS updates only: auto | always | never
+
+
+class BatchRequest(BaseModel):
+    vmids: list[int]
+    kinds: list[str]  # app and/or os
+    snapshot: bool = False
+    restart: str = "auto"
+    stop_on_failure: bool = False
+    only: dict[int, list[str]] | None = None  # per-container kinds
+
+
+@app.post("/api/batch")
+async def start_batch(req: BatchRequest):
+    if req.restart not in ("auto", "always", "never"):
+        raise HTTPException(400, "restart must be auto, always or never")
+    try:
+        return batches.start(req.vmids, req.kinds, req.snapshot, req.restart, req.stop_on_failure, req.only)
+    except BatchError as e:
+        raise HTTPException(409, str(e))
+
+
+@app.post("/api/batch/stop")
+async def stop_batch():
+    batches.stop()
+    return batches.current
+
+
+@app.post("/api/batch/dismiss")
+async def dismiss_batch():
+    batches.dismiss()
+    return {"ok": True}
 
 
 @app.post("/api/update")

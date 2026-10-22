@@ -23,6 +23,7 @@ lxcwatch logs in to your Proxmox nodes over SSH. It needs nothing installed in t
   4. After a successful update it rescans the container and prunes old `lxcwatch-*` snapshots.
 
   Restarting lxcwatch doesn't interrupt a running update. It reattaches on startup.
+- **Update all:** pick apps, OS packages or both, untick anything you want to leave out, and lxcwatch updates the containers one at a time. With both selected, each container's app update runs before its OS update, and the next update only starts after the previous one and its rescan finish. The run happens on the server, so closing the page doesn't stop it. Stop finishes the current update and skips the rest. If lxcwatch restarts mid-run, the update in progress completes, but the rest of the queue is dropped.
 - **Notify:** after a scheduled scan, anything new is sent to ntfy and/or a webhook, once per version.
 
 Nothing updates automatically. Updates only run when you click one of the update buttons.

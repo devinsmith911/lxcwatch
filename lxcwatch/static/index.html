@@ -76,6 +76,17 @@ input[type=search] { font: inherit; padding: 5px 10px; border: 1px solid var(--b
 .toggle:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
 .toggle input { accent-color: var(--accent); margin: 0; }
 .spacer { flex: 1; }
+.batch { background: var(--panel); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+.batch .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bar { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; margin: 10px 0; }
+.bar > div { height: 100%; background: var(--accent); transition: width .3s ease; }
+.steps { display: flex; flex-wrap: wrap; gap: 6px; }
+.steps .badge { cursor: default; }
+.steps .badge[data-job] { cursor: pointer; }
+.picklist { max-height: 40vh; overflow: auto; border: 1px solid var(--border); border-radius: 6px; margin: 8px 0; }
+.picklist label { display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.picklist label:last-child { border-bottom: 0; }
+.picklist label > span:first-child { display: inline-flex; gap: 8px; align-items: center; }
 .pager { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-top: 12px; }
 .pager .actions { align-items: center; }
 select { font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
@@ -176,8 +187,10 @@ a.ext::after { content: " ↗"; font-size: .85em; }
     <label class="toggle"><input type="checkbox" id="hidestopped"> Hide stopped</label>
     <label class="toggle" title="Containers whose app version lxcwatch can't determine: not from community-scripts, never scanned, or no version found"><input type="checkbox" id="hideunknown"> Hide unknown</label>
     <span class="spacer"></span>
+    <button id="updateall" class="primary">Update all…</button>
     <input type="search" id="q" placeholder="Filter by name, ID, node, tag">
   </div>
+  <div id="batchbox"></div>
   <table>
     <thead><tr>
       <th style="width:28px"><input type="checkbox" id="selall" aria-label="Select all"></th>
@@ -212,6 +225,27 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   </header>
   <div class="body" id="dbody"></div>
 </aside>
+
+<dialog id="alldlg">
+  <form method="dialog">
+    <h3 style="margin-top:0">Update all</h3>
+    <div class="actions">
+      <label class="toggle"><input type="checkbox" id="allapp" checked> Apps <span class="muted small" id="allappn"></span></label>
+      <label class="toggle"><input type="checkbox" id="allos" checked> OS packages <span class="muted small" id="allosn"></span></label>
+    </div>
+    <div class="picklist" id="allpick"></div>
+    <div class="muted small" id="allsummary"></div>
+    <p><label class="check"><input type="checkbox" id="allsnap"> Take a snapshot before each update</label></p>
+    <p id="allrestartwrap"><label class="check">Restart after OS updates
+      <select id="allrestart"><option value="auto">Only if needed</option><option value="always">Always</option><option value="never">Never</option></select></label></p>
+    <p><label class="check"><input type="checkbox" id="allstop"> Stop at the first failure</label></p>
+    <p class="muted small">Runs one container at a time; with both selected, each container's app update runs before its OS update. It keeps going if you close this page.</p>
+    <div class="actions" style="justify-content:flex-end">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary" id="allgo">Start</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="confirm">
   <form method="dialog">
@@ -355,6 +389,7 @@ function render() {
   const cs = d.containers;
   const s = d.scan;
   renderConn(d.connection);
+  renderBatch(d.batch);
   const next = s.next_at ? ` · next ${until(s.next_at)}` : s.interval_minutes > 0 ? "" : " · scheduled scans off";
   $("#scaninfo").textContent = s.running ? "Scanning…" : `${s.last ? `Last scan ${ago(s.last.at)} · ${s.last.count} containers in ${s.last.took}s` : "Not scanned yet"}${next}`;
   if (s.error) $("#scaninfo").innerHTML += ` · <span class="badge bad">${esc(s.error)}</span>`;
@@ -384,6 +419,83 @@ function render() {
   $("#bulk").classList.toggle("show", n > 0);
   $("#bulkcount").textContent = `${n} selected`;
   if (state.drawer?.type === "ct") renderDetails(false);
+}
+
+// ---- Update all ----
+const allState = { off: new Set() };
+const appPending = c => c.status === "running" && c.script && c.outdated > 0;
+const osPending = c => c.status === "running" && c.pkgmgr && c.pkg_count > 0;
+
+function renderAllDialog() {
+  const cs = state.data.containers;
+  const app = $("#allapp").checked, os = $("#allos").checked;
+  $("#allappn").textContent = `(${cs.filter(appPending).length})`;
+  $("#allosn").textContent = `(${cs.filter(osPending).length})`;
+  $("#allrestartwrap").hidden = !os;
+  const rows = cs.filter(c => (app && appPending(c)) || (os && osPending(c)));
+  $("#allpick").innerHTML = rows.length ? rows.map(c => {
+    const what = [
+      app && appPending(c) ? c.components.filter(x => x.state === "outdated").map(x => `${esc(x.name)} ${esc(x.installed)} → ${esc(x.target)}`).join(", ") : "",
+      os && osPending(c) ? `${c.pkg_count} package${c.pkg_count === 1 ? "" : "s"}${c.pkg_security ? ` (${c.pkg_security} security)` : ""}` : "",
+    ].filter(Boolean).join(" · ");
+    return `<label><span><input type="checkbox" data-allpick="${c.vmid}" ${allState.off.has(c.vmid) ? "" : "checked"}> ${c.vmid} · ${esc(c.name)}</span><span class="muted small">${what}</span></label>`;
+  }).join("") : `<div class="muted small" style="padding:10px">Nothing to update. Everything selected is up to date.</div>`;
+  const picked = rows.filter(c => !allState.off.has(c.vmid));
+  const steps = picked.reduce((n, c) => n + (app && appPending(c) ? 1 : 0) + (os && osPending(c) ? 1 : 0), 0);
+  $("#allsummary").textContent = picked.length ? `${steps} update${steps === 1 ? "" : "s"} across ${picked.length} container${picked.length === 1 ? "" : "s"}` : "";
+  $("#allgo").disabled = !picked.length;
+  $("#allgo").textContent = picked.length ? `Update ${picked.length} container${picked.length === 1 ? "" : "s"}` : "Start";
+  return picked;
+}
+
+async function openUpdateAll() {
+  if (state.data.batch?.status === "running") return alert("An update-all run is already in progress.");
+  allState.off.clear();
+  $("#allsnap").checked = false;
+  $("#allrestart").value = stored("restart", "auto");
+  renderAllDialog();
+  const dlg = $("#alldlg");
+  dlg.returnValue = "";
+  dlg.showModal();
+  const ok = await new Promise(res => dlg.addEventListener("close", () => res(dlg.returnValue === "ok"), { once: true }));
+  if (!ok) return;
+  const app = $("#allapp").checked, os = $("#allos").checked;
+  // Only send each container the kinds it actually needs.
+  const picked = renderAllDialog();
+  const kinds = [app && "app", os && "os"].filter(Boolean);
+  try {
+    if (os) store("restart", $("#allrestart").value);
+    const appIds = picked.filter(c => app && appPending(c)).map(c => c.vmid);
+    const osIds = picked.filter(c => os && osPending(c)).map(c => c.vmid);
+    const both = appIds.filter(id => osIds.includes(id));
+    const order = picked.map(c => c.vmid);
+    await api("/api/batch", { method: "POST", body: JSON.stringify({
+      vmids: order, kinds, snapshot: $("#allsnap").checked, restart: $("#allrestart").value, stop_on_failure: $("#allstop").checked,
+      only: Object.fromEntries(order.map(id => [id, both.includes(id) ? ["app", "os"] : appIds.includes(id) ? ["app"] : ["os"]])),
+    }) });
+    refresh();
+  } catch (e) { alert(e.message); }
+}
+
+const STEP_BADGE = { pending: "", running: "warn", success: "ok", failed: "bad", skipped: "info" };
+const STEP_ICON = { pending: "○", running: "◐", success: "✓", failed: "✗", skipped: "–" };
+
+function renderBatch(b) {
+  const box = $("#batchbox");
+  if (!b) { box.innerHTML = ""; return; }
+  const done = b.steps.filter(s => !["pending", "running"].includes(s.status)).length;
+  const failed = b.steps.filter(s => s.status === "failed").length;
+  const cur = b.steps.find(s => s.status === "running");
+  const title = b.status === "running"
+    ? `Updating all · ${done} of ${b.steps.length} done${cur ? ` · now ${cur.vmid} ${esc(cur.name)} (${cur.kind === "app" ? "app" : "OS"})` : ""}`
+    : `Update all ${b.status === "done" ? "finished" : b.status === "stopped" ? "stopped" : "failed"} · ${b.steps.filter(s => s.status === "success").length} succeeded${failed ? `, ${failed} failed` : ""}${b.steps.some(s => s.status === "skipped") ? `, ${b.steps.filter(s => s.status === "skipped").length} skipped` : ""}`;
+  box.innerHTML = `<div class="batch">
+    <div class="head"><b>${title}</b>
+      ${b.status === "running" ? `<button id="batchstop" ${state.batchStopping ? "disabled" : ""}>${state.batchStopping ? "Stopping after current…" : "Stop"}</button>` : `<button id="batchdismiss">Dismiss</button>`}</div>
+    <div class="bar"><div style="width:${Math.round(done / b.steps.length * 100)}%"></div></div>
+    <div class="steps">${b.steps.map(s => `<span class="badge ${STEP_BADGE[s.status]}" ${s.job ? `data-job="${esc(s.job)}" data-jobvmid="${s.vmid}" title="Show log"` : ""} ${s.note ? `title="${esc(s.note)}"` : ""}>${STEP_ICON[s.status]} ${s.vmid} ${esc(s.name)} · ${s.kind === "app" ? "app" : "OS"}${s.note && s.status !== "running" ? ` — ${esc(s.note)}` : ""}</span>`).join("")}</div>
+  </div>`;
+  if (b.status !== "running") state.batchStopping = false;
 }
 
 function renderConn(conn) {
@@ -604,7 +716,7 @@ function openJob(id, vmid) {
 }
 
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("button, input[type=checkbox]");
+  const t = ev.target.closest("button, input[type=checkbox], .steps [data-job]");
   if (!t) return;
   if (t.matches("[data-f]")) {
     state.filter = t.dataset.f;
@@ -637,7 +749,7 @@ document.addEventListener("click", async ev => {
   } else if (t.id === "dclose") {
     closeDrawer();
   } else if (t.dataset.job) {
-    openJob(t.dataset.job, state.drawer?.vmid);
+    openJob(t.dataset.job, t.dataset.jobvmid ? Number(t.dataset.jobvmid) : state.drawer?.vmid);
   } else if (t.dataset.notes) {
     loadNotes(t.dataset.notes);
   } else if (t.dataset.back) {
@@ -647,6 +759,20 @@ document.addEventListener("click", async ev => {
     const c = state.data.containers.find(x => x.vmid === id); if (c) c.scanning = true; render();
     await api(`/api/containers/${id}/scan`, { method: "POST" }).catch(e => alert(e.message));
     refresh();
+  } else if (t.id === "updateall") {
+    openUpdateAll();
+  } else if (t.id === "batchstop") {
+    state.batchStopping = true; render();
+    await api("/api/batch/stop", { method: "POST" }).catch(e => alert(e.message));
+  } else if (t.id === "batchdismiss") {
+    await api("/api/batch/dismiss", { method: "POST" }).catch(() => {});
+    refresh();
+  } else if (t.dataset.allpick) {
+    const id = Number(t.dataset.allpick);
+    t.checked ? allState.off.delete(id) : allState.off.add(id);
+    renderAllDialog();
+  } else if (t.id === "allapp" || t.id === "allos") {
+    renderAllDialog();
   } else if (t.dataset.clearfail) {
     const vmid = Number(t.dataset.clearfail);
     if (!confirm(`Dismiss the failure flag in CT ${vmid}? The install log stays.`)) return;
