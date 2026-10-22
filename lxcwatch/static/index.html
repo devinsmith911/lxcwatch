@@ -109,7 +109,7 @@ tr.r-stopped { --row: var(--idle); }
 tr.r-stopped .name { color: var(--muted); }
 tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
 .name { font-weight: 600; }
-.badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 12px; background: var(--chip); margin: 1px 2px 1px 0; }
+.badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: 12px; line-height: 1.4; vertical-align: middle; white-space: nowrap; background: var(--chip); margin: 1px 2px 1px 0; }
 .badge.ok { background: var(--ok-bg); color: var(--ok); }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
 .badge.bad { background: var(--bad-bg); color: var(--bad); }
@@ -117,7 +117,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 45%, trans
 .badge.node { background: var(--accent-soft); color: var(--accent); }
 .comp { white-space: nowrap; }
 .arrow { color: var(--warn); font-weight: 600; }
-.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .bulk { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: none; gap: 10px; align-items: center; box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 6; flex-wrap: wrap; max-width: calc(100% - 32px); }
 .bulk.show { display: flex; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100%); background: var(--panel); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform .18s ease; z-index: 10; display: flex; flex-direction: column; }
