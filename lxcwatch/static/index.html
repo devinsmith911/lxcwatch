@@ -118,6 +118,17 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .err { color: var(--bad); }
 label.check { display: inline-flex; gap: 6px; align-items: center; }
 .pkgs { columns: 2; font: 12px ui-monospace, Menlo, monospace; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a.ext::after { content: " ↗"; font-size: .85em; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; margin-top: 4px; }
+.comp-d { display: block !important; }
+.comp-d .head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rel { border-top: 1px dashed var(--border); padding: 6px 0; }
+.rel:first-child { border-top: 0; }
+.rel summary { cursor: pointer; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rel pre { white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, Menlo, monospace; background: var(--chip); padding: 10px; border-radius: 6px; margin: 6px 0 0; max-height: 360px; overflow: auto; }
+.whatsnew { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 6%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); }
 @media (max-width: 760px) {
   header, main { padding-left: 16px; padding-right: 16px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -260,7 +271,10 @@ function compHtml(c) {
   if (!c.script) return `<span class="badge info">not a community-script</span>`;
   const parts = c.components.map(x => {
     const name = esc(x.name);
-    if (x.state === "outdated") return `<div class="comp" title="${esc(x.repo)}">${name} ${esc(x.installed)} <span class="arrow">→ ${esc(x.target)}</span>${x.pinned ? ' <span class="badge">pinned</span>' : ""}</div>`;
+    if (x.state === "outdated") {
+      const target = x.release_url ? `<a href="${esc(x.release_url)}" target="_blank" rel="noopener" title="Release notes for ${esc(x.target_tag)}">${esc(x.target)}</a>` : esc(x.target);
+      return `<div class="comp" title="${esc(x.repo)}">${name} ${esc(x.installed)} <span class="arrow">→ ${target}</span>${x.pinned ? ' <span class="badge">pinned</span>' : ""}${x.release_url ? ` <a class="small ext" href="${esc(x.release_url)}" target="_blank" rel="noopener">notes</a>` : ""}</div>`;
+    }
     if (x.state === "current") {
       const behind = x.pinned && x.upstream && x.upstream !== x.target ? ` <span class="badge" title="community-scripts pins ${esc(x.target)}; upstream has ${esc(x.upstream)}">pinned</span>` : "";
       return `<div class="comp">${name} ${esc(x.installed)} <span class="badge ok">current</span>${behind}</div>`;
@@ -382,7 +396,7 @@ function confirmUpdate(kind, vmids) {
   $("#ctitle").textContent = kind === "app" ? `Run the app update on ${cs.length} container${cs.length > 1 ? "s" : ""}?` : `Upgrade OS packages on ${cs.length} container${cs.length > 1 ? "s" : ""}?`;
   $("#cbody").innerHTML = `<div class="list">${cs.map(c => {
     const what = kind === "app"
-      ? (c.components.filter(x => x.state === "outdated").map(x => `${esc(x.name)} ${esc(x.installed)} → ${esc(x.target)}`).join(", ") || "runs <code>update</code> (also upgrades OS packages)")
+      ? (c.components.filter(x => x.state === "outdated").map(x => `${esc(x.name)} ${esc(x.installed)} → ${esc(x.target)}${x.release_url ? ` <a class="ext" href="${esc(x.release_url)}" target="_blank" rel="noopener">notes</a>` : ""}`).join(", ") || "runs <code>update</code> (also upgrades OS packages)")
       : `${c.pkg_count} package${c.pkg_count === 1 ? "" : "s"}`;
     return `<div><span>${c.vmid} · ${esc(c.name)}</span><span class="muted small">${what}</span></div>`;
   }).join("")}</div>`;
@@ -421,7 +435,7 @@ function closeDrawer() {
 
 async function openDetails(vmid) {
   if (state.es) { state.es.close(); state.es = null; }
-  state.drawer = { type: "ct", vmid, snaps: null, jobs: null };
+  state.drawer = { type: "ct", vmid, snaps: null, jobs: null, notes: {}, open: new Set() };
   renderDetails(true);
   const [snaps, jobs] = await Promise.allSettled([api(`/api/containers/${vmid}/snapshots`), api(`/api/jobs?vmid=${vmid}`)]);
   if (state.drawer?.vmid !== vmid) return;
@@ -435,9 +449,11 @@ function renderDetails(first) {
   const c = state.data.containers.find(x => x.vmid === dr.vmid);
   if (!c) return closeDrawer();
   if (first) openDrawer(`${c.vmid} · ${c.name}`, `${c.node} · ${c.os || ""}${c.script ? ` · ct/${c.script}.sh` : ""}`);
-  const comps = c.components.length ? `<div class="list">${c.components.map(x => `<div><span>${esc(x.name)} <span class="muted small">${esc(x.repo || "")}</span></span>
-      <span class="small">installed ${esc(x.installed ?? "?")} · target ${esc(x.target ?? "?")}${x.upstream && x.upstream !== x.target ? ` · upstream ${esc(x.upstream)}` : ""}</span></div>`).join("")}</div>`
+  const comps = c.components.length ? `<div class="list">${c.components.map(x => compDetail(x, dr)).join("")}</div>`
     : `<p class="muted">No tracked app versions.</p>`;
+  const scriptLinks = c.script ? `<div class="links">
+      ${c.script_page ? `<a class="ext" href="${esc(c.script_page)}" target="_blank" rel="noopener">community-scripts page</a>` : ""}
+      <a class="ext" href="${esc(c.script_url)}" target="_blank" rel="noopener">ct/${esc(c.script)}.sh</a></div>` : "";
   const pk = c.packages.length ? `<div class="pkgs">${c.packages.map(p => `<div>${p.security ? "⚠ " : ""}${esc(p.name)} ${esc(p.from || "")} → ${esc(p.to)}</div>`).join("")}</div>` : `<p class="muted">No pending packages.</p>`;
   let snaps = `<p class="muted">Loading…</p>`;
   if (dr.snaps?.status === "rejected") snaps = `<p class="err">${esc(dr.snaps.reason.message)}</p>`;
@@ -454,10 +470,61 @@ function renderDetails(first) {
       ${c.job ? `<button data-job="${esc(c.job)}">Live log</button>` : ""}
     </div>
     ${c.error ? `<p class="err">${esc(c.error)}</p>` : ""}
-    <h3>App versions</h3>${comps}
+    <h3>App versions</h3>${scriptLinks}${comps}
     <h3>Pending OS packages (${c.pkg_count})</h3>${pk}
     <h3>Snapshots</h3>${snaps}
     <h3>Job history</h3>${jobs}`;
+}
+
+const notesKey = x => `${x.forge}|${x.repo}|${x.installed}|${x.target}`;
+
+function compDetail(x, dr) {
+  const ver = `installed ${esc(x.installed ?? "?")} · target ${x.release_url ? `<a href="${esc(x.release_url)}" target="_blank" rel="noopener">${esc(x.target ?? "?")}</a>` : esc(x.target ?? "?")}${
+    x.upstream && x.upstream !== x.target ? ` · upstream ${x.upstream_url ? `<a href="${esc(x.upstream_url)}" target="_blank" rel="noopener">${esc(x.upstream)}</a>` : esc(x.upstream)}` : ""}`;
+  const links = x.repo ? `<div class="links">
+      ${x.release_url ? `<a class="ext" href="${esc(x.release_url)}" target="_blank" rel="noopener">Release ${esc(x.target_tag)}</a>` : ""}
+      <a class="ext" href="${esc(x.releases_url)}" target="_blank" rel="noopener">All releases</a>
+      <a class="ext" href="${esc(x.repo_url)}" target="_blank" rel="noopener">${esc(x.repo)}</a>
+    </div>` : "";
+  let news = "";
+  if (x.state === "outdated" && x.repo) {
+    const key = notesKey(x);
+    const n = dr.notes[key];
+    if (!n) news = `<button class="small" data-notes="${esc(key)}">What's new since ${esc(x.installed)}?</button>`;
+    else if (n === "loading") news = `<div class="whatsnew muted small">Loading releases…</div>`;
+    else if (n.error) news = `<div class="whatsnew err small">${esc(n.error)}</div>`;
+    else {
+      const rels = n.releases.map(r => {
+        const id = `${key}|${r.tag}`;
+        return `<details class="rel" data-open="${esc(id)}" ${dr.open.has(id) ? "open" : ""}>
+          <summary><span><b>${esc(r.name)}</b>${r.name !== r.tag ? ` <span class="muted small">${esc(r.tag)}</span>` : ""}</span>
+            <span class="small"><span class="muted">${r.published ? new Date(r.published).toLocaleDateString() : ""}</span> <a class="ext" href="${esc(r.url)}" target="_blank" rel="noopener">open</a></span></summary>
+          <pre>${esc(r.notes || "No release notes.")}${r.notes_truncated ? "\n…" : ""}</pre></details>`;
+      }).join("");
+      news = `<div class="whatsnew">
+        <div class="head small"><b>${n.releases.length} release${n.releases.length === 1 ? "" : "s"} to catch up on${n.complete ? "" : " (older ones not shown)"}</b>
+          ${n.compare_url ? `<a class="ext" href="${esc(n.compare_url)}" target="_blank" rel="noopener">Compare ${esc(n.installed_tag)}…${esc(n.target_tag)}</a>` : ""}</div>
+        ${rels || `<p class="muted small">No matching releases found.</p>`}</div>`;
+    }
+  }
+  return `<div class="comp-d"><div class="head"><span><b>${esc(x.name)}</b> ${x.state === "outdated" ? '<span class="badge warn">update</span>' : x.state === "current" ? '<span class="badge ok">current</span>' : `<span class="badge info">${esc(x.state)}</span>`}</span>
+    <span class="small">${ver}</span></div>${links}${news}</div>`;
+}
+
+async function loadNotes(key) {
+  const dr = state.drawer;
+  const c = state.data.containers.find(x => x.vmid === dr.vmid);
+  const x = c?.components.find(y => notesKey(y) === key);
+  if (!x) return;
+  dr.notes[key] = "loading";
+  renderDetails(false);
+  try {
+    const q = new URLSearchParams({ forge: x.forge, repo: x.repo, installed: x.installed, target: x.target_tag || x.target });
+    dr.notes[key] = await api(`/api/releases?${q}`);
+  } catch (e) {
+    dr.notes[key] = { error: e.message };
+  }
+  if (state.drawer === dr) renderDetails(false);
 }
 
 function openJob(id, vmid) {
@@ -522,6 +589,8 @@ document.addEventListener("click", async ev => {
     closeDrawer();
   } else if (t.dataset.job) {
     openJob(t.dataset.job, state.drawer?.vmid);
+  } else if (t.dataset.notes) {
+    loadNotes(t.dataset.notes);
   } else if (t.dataset.back) {
     openDetails(Number(t.dataset.back));
   } else if (t.dataset.rescan) {
@@ -568,6 +637,12 @@ for (const [id, key] of [["hidestopped", "hideStopped"], ["hideunknown", "hideUn
   $(`#${id}`).addEventListener("change", e => { state[key] = e.target.checked; store(key, state[key]); state.page = 1; render(); });
 }
 document.addEventListener("click", e => { if (!e.target.closest("#conn")) $("#conn").open = false; });
+// Remember which release notes are expanded across the periodic re-render.
+document.addEventListener("toggle", e => {
+  const id = e.target.dataset?.open;
+  if (!id || state.drawer?.type !== "ct") return;
+  e.target.open ? state.drawer.open.add(id) : state.drawer.open.delete(id);
+}, true);
 document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#drawer").classList.contains("open") && !$("#confirm").open) closeDrawer(); });
 
 refresh();

@@ -66,7 +66,7 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 | `LXCWATCH_KEEP_SNAPSHOTS` | `3` | `lxcwatch-*` snapshots kept per CT (`0` = never prune) |
 | `LXCWATCH_GITHUB_TOKEN` | — | Recommended once you have more than about 15 apps (the GitHub limit is 60 requests/hour without a token) |
 | `LXCWATCH_NTFY_URL` / `_TOKEN` | — | ntfy topic URL |
-| `LXCWATCH_WEBHOOK_URL` | — | Receives a JSON POST: `{title, message, items, url}` |
+| `LXCWATCH_WEBHOOK_URL` | — | Receives a JSON POST: `{title, message, items: [{text, url, vmid}], url}` |
 | `LXCWATCH_NOTIFY_PACKAGES` | `security` | `none`, `security` or `all` |
 
 ## Things to know

@@ -161,3 +161,35 @@ def test_probe_in_real_container(image, update):
         assert info["script_base"] == "https://github.com/community-scripts/ProxmoxVE/raw/main"
         assert info["pkgmgr"] == "apk"
     assert info["os_id"] in ("debian", "alpine")
+
+
+def test_release_links():
+    from lxcwatch.upstream import compare_url, repo_links
+    links = repo_links("github", "paperless-ngx/paperless-ngx", "v2.15.1")
+    assert links == {
+        "repo_url": "https://github.com/paperless-ngx/paperless-ngx",
+        "releases_url": "https://github.com/paperless-ngx/paperless-ngx/releases",
+        "release_url": "https://github.com/paperless-ngx/paperless-ngx/releases/tag/v2.15.1",
+    }
+    assert repo_links("gitlab", "a/b", "1.0")["release_url"] == "https://gitlab.com/a/b/-/releases/1.0"
+    assert repo_links("codeberg", "a/b", None)["release_url"] is None
+    assert compare_url("github", "a/b", "v1", "v2") == "https://github.com/a/b/compare/v1...v2"
+
+
+def test_components_carry_release_links():
+    checks = [Check("github", "Immich", "immich-app/immich", "v3.3.5", None)]
+    comp = build_components(checks, {"/root/.immich": "3.3.0"}, {("github", "immich-app/immich"): "v3.4.0"})[0]
+    # Pinned: the link points at the release `update` will install, not upstream latest.
+    assert comp["release_url"].endswith("/releases/tag/v3.3.5")
+    assert comp["upstream_url"].endswith("/releases/tag/v3.4.0")
+
+
+def test_releases_between():
+    from lxcwatch.upstream import releases_between
+    rels = [{"tag": t} for t in ("v1.5.0", "v1.4.2", "v1.4.1", "v1.4.0", "v1.3.0")]
+    out = releases_between(rels, "1.4.0", "1.4.2")  # pinned below latest
+    assert [r["tag"] for r in out["releases"]] == ["v1.4.2", "v1.4.1"]
+    assert out["complete"] and out["installed_tag"] == "v1.4.0" and out["target_tag"] == "v1.4.2"
+    out = releases_between(rels, "0.9", "v1.5.0")  # installed older than the fetched window
+    assert len(out["releases"]) == 5 and not out["complete"]
+    assert releases_between(rels, "1.5.0", "1.4.2")["releases"] == []

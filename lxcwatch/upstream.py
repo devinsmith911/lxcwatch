@@ -15,6 +15,7 @@ import re
 import shlex
 import time
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import httpx
 
@@ -99,6 +100,42 @@ def parse_checks(script: str) -> list[Check]:
     return checks
 
 
+FORGE_WEB = {"github": "https://github.com", "codeberg": "https://codeberg.org", "gitlab": "https://gitlab.com"}
+
+
+def repo_links(forge: str, repo: str, tag: str | None) -> dict:
+    """Browser links for a repo, its releases and (if known) one release."""
+    base = f"{FORGE_WEB[forge]}/{repo}"
+    releases = f"{base}/-/releases" if forge == "gitlab" else f"{base}/releases"
+    release = None
+    if tag:
+        release = f"{releases}/{quote(tag, safe='')}" if forge == "gitlab" else f"{releases}/tag/{quote(tag, safe='')}"
+    return {"repo_url": base, "releases_url": releases, "release_url": release}
+
+
+def compare_url(forge: str, repo: str, old_tag: str, new_tag: str) -> str | None:
+    if forge == "gitlab":
+        return f"{FORGE_WEB[forge]}/{repo}/-/compare/{quote(old_tag, safe='')}...{quote(new_tag, safe='')}"
+    return f"{FORGE_WEB[forge]}/{repo}/compare/{quote(old_tag, safe='')}...{quote(new_tag, safe='')}"
+
+
+def releases_between(releases: list[dict], installed: str | None, target: str | None) -> dict:
+    """Releases newer than `installed` up to and including `target` (newest first)."""
+    tags = [strip_v(r["tag"]) for r in releases]
+    start = tags.index(strip_v(target)) if target and strip_v(target) in tags else 0
+    end = tags.index(strip_v(installed)) if installed and strip_v(installed) in tags else None
+    if end is not None and end < start:
+        return {"releases": [], "complete": True, "installed_tag": releases[end]["tag"]}
+    picked = releases[start:end] if end is not None else releases[start:]
+    return {
+        "releases": picked,
+        # False when the installed version is older than everything we fetched.
+        "complete": end is not None,
+        "installed_tag": releases[end]["tag"] if end is not None else None,
+        "target_tag": releases[start]["tag"] if releases else None,
+    }
+
+
 def build_components(checks: list[Check], versions: dict[str, str], latest: dict[tuple[str, str], str | None]) -> list[dict]:
     """Join release checks with the version files found in the container."""
     by_key = {path.rsplit("/", 1)[-1].lstrip("."): v for path, v in versions.items() if path.startswith("/root/.")}
@@ -106,7 +143,8 @@ def build_components(checks: list[Check], versions: dict[str, str], latest: dict
     components = []
     for c in checks:
         installed = strip_v(by_key.get(c.key))
-        upstream = strip_v(latest.get((c.forge, c.repo)))
+        upstream_tag = latest.get((c.forge, c.repo))
+        upstream = strip_v(upstream_tag)
         if c.tag_prefix and upstream and upstream.startswith(c.tag_prefix):
             upstream = strip_v(upstream[len(c.tag_prefix):])
         target = strip_v(c.pin) or upstream
@@ -122,16 +160,20 @@ def build_components(checks: list[Check], versions: dict[str, str], latest: dict
             state = "current"
         else:
             state = "outdated"
+        target_tag = c.pin or upstream_tag
         components.append({
             "name": c.app,
             "repo": c.repo,
             "forge": c.forge,
             "installed": installed,
             "target": target,
+            "target_tag": target_tag,
             "upstream": upstream,
             "pinned": bool(c.pin),
             "pending": (c.key + ".pending") in by_key,
             "state": state,
+            **repo_links(c.forge, c.repo, target_tag),
+            "upstream_url": repo_links(c.forge, c.repo, upstream_tag)["release_url"] if c.pin and upstream_tag else None,
         })
     # Version files with no matching check: still worth showing.
     for path, raw in sorted(versions.items()):
@@ -145,6 +187,19 @@ def build_components(checks: list[Check], versions: dict[str, str], latest: dict
             "target": None, "upstream": None, "pinned": False, "pending": False, "state": "untracked",
         })
     return components
+
+
+class RateLimited(httpx.HTTPError):
+    pass
+
+
+def _check(r: httpx.Response) -> None:
+    """raise_for_status, with a useful message for GitHub's rate limit."""
+    if r.status_code in (403, 429) and r.headers.get("x-ratelimit-remaining") == "0":
+        reset = r.headers.get("x-ratelimit-reset")
+        when = time.strftime("%H:%M", time.localtime(int(reset))) if reset and reset.isdigit() else "later"
+        raise RateLimited(f"GitHub API rate limit reached (resets {when}); set LXCWATCH_GITHUB_TOKEN to raise it")
+    r.raise_for_status()
 
 
 class Upstream:
@@ -189,25 +244,17 @@ class Upstream:
         hit, value = self._get(key, 3 * 3600)
         if hit:
             return value
-        if forge == "github":
-            headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-            if self.cfg.github_token:
-                headers["Authorization"] = f"Bearer {self.cfg.github_token}"
-            base = f"https://api.github.com/repos/{repo}"
-        elif forge == "codeberg":
-            headers, base = {}, f"https://codeberg.org/api/v1/repos/{repo}"
-        else:
-            headers, base = {}, f"https://gitlab.com/api/v4/projects/{repo.replace('/', '%2F')}"
+        base, headers = self._api(forge, repo)
         tag = None
         if forge != "gitlab" and not tag_prefix:
             r = await self.http.get(f"{base}/releases/latest", headers=headers)
             if r.status_code == 200:
                 tag = r.json().get("tag_name")
-            elif r.status_code not in (404,):
-                r.raise_for_status()
+            elif r.status_code != 404:
+                _check(r)
         if tag is None:
             r = await self.http.get(f"{base}/releases", params={"per_page": 50}, headers=headers)
-            r.raise_for_status()
+            _check(r)
             for rel in r.json():
                 if rel.get("draft") or rel.get("prerelease") or rel.get("upcoming_release"):
                     continue
@@ -217,6 +264,42 @@ class Upstream:
                 tag = name
                 break
         return self._put(key, tag)
+
+    def _api(self, forge: str, repo: str) -> tuple[str, dict]:
+        if forge == "github":
+            headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+            if self.cfg.github_token:
+                headers["Authorization"] = f"Bearer {self.cfg.github_token}"
+            return f"https://api.github.com/repos/{repo}", headers
+        if forge == "codeberg":
+            return f"https://codeberg.org/api/v1/repos/{repo}", {}
+        return f"https://gitlab.com/api/v4/projects/{repo.replace('/', '%2F')}", {}
+
+    async def releases(self, forge: str, repo: str) -> list[dict]:
+        """Recent stable releases, newest first, normalised across forges."""
+        key = ("releases", forge, repo)
+        hit, value = self._get(key, 3 * 3600)
+        if hit:
+            return value
+        base, headers = self._api(forge, repo)
+        r = await self.http.get(f"{base}/releases", params={"per_page": 50}, headers=headers)
+        _check(r)
+        out = []
+        for rel in r.json():
+            if rel.get("draft") or rel.get("prerelease") or rel.get("upcoming_release"):
+                continue
+            tag = rel.get("tag_name") or ""
+            if forge == "gitlab":
+                url = (rel.get("_links") or {}).get("self") or repo_links(forge, repo, tag)["release_url"]
+                published = rel.get("released_at")
+                body = rel.get("description") or ""
+            else:
+                url = rel.get("html_url") or repo_links(forge, repo, tag)["release_url"]
+                published = rel.get("published_at") or rel.get("created_at")
+                body = rel.get("body") or ""
+            out.append({"tag": tag, "name": rel.get("name") or tag, "url": url, "published": published,
+                        "notes": body[:6000], "notes_truncated": len(body) > 6000})
+        return self._put(key, out)
 
     async def script_state(self, slug: str) -> dict | None:
         """Whether community-scripts still maintains this script (e.g. 'deleted')."""

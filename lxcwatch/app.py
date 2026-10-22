@@ -4,6 +4,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import secrets
 import time
 
@@ -16,7 +17,7 @@ from .cluster import Cluster
 from .db import DB
 from .jobs import JobError, Jobs
 from .ssh import SSH
-from .upstream import Upstream
+from .upstream import FORGE_WEB, Upstream, compare_url, releases_between
 
 logging.basicConfig(level=os.environ.get("LXCWATCH_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("lxcwatch")
@@ -107,6 +108,8 @@ def _summary(ct: dict) -> dict:
         "tags": [t for t in (ct["tags"] or "").replace(",", ";").split(";") if t],
         "os": info.get("os"),
         "script": info.get("script"),
+        "script_url": f"{upstream.script_base(info.get('script_base'))}/ct/{info['script']}.sh" if info.get("script") else None,
+        "script_page": f"{cfg.website_url}/scripts/{info['slug']}" if info.get("slug") else None,
         "script_state": info.get("script_state"),
         "components": comps,
         "outdated": sum(1 for c in comps if c["state"] == "outdated"),
@@ -213,6 +216,26 @@ async def delete_snapshot(vmid: int, name: str):
     except Exception as e:
         raise HTTPException(502, str(e))
     return {"deleted": name}
+
+
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+@app.get("/api/releases")
+async def releases(forge: str, repo: str, installed: str | None = None, target: str | None = None):
+    """Release notes between the installed and target versions."""
+    if forge not in FORGE_WEB or not REPO_RE.match(repo):
+        raise HTTPException(400, "bad forge or repo")
+    try:
+        rels = await upstream.releases(forge, repo)
+    except Exception as e:
+        raise HTTPException(502, f"could not fetch releases: {e}")
+    out = releases_between(rels, installed, target)
+    out["compare_url"] = (
+        compare_url(forge, repo, out["installed_tag"], out["target_tag"])
+        if out.get("installed_tag") and out.get("target_tag") and out["installed_tag"] != out["target_tag"] else None
+    )
+    return out
 
 
 @app.get("/api/jobs")

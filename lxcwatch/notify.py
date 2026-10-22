@@ -11,9 +11,9 @@ from .db import DB
 log = logging.getLogger(__name__)
 
 
-def collect(cfg: Config, db: DB) -> tuple[list[str], list[str]]:
-    """Return (message lines, dedupe keys) for updates not yet notified."""
-    lines: list[str] = []
+def collect(cfg: Config, db: DB) -> tuple[list[dict], list[str]]:
+    """Return (items, dedupe keys) for updates not yet notified."""
+    lines: list[dict] = []
     keys: list[str] = []
     for ct in db.containers():
         info = ct["info"]
@@ -25,7 +25,8 @@ def collect(cfg: Config, db: DB) -> tuple[list[str], list[str]]:
                 continue
             key = f"{ct['vmid']}:app:{comp['name']}:{comp['target']}"
             if not db.was_notified(key):
-                lines.append(f"{label}: {comp['name']} {comp['installed']} → {comp['target']}")
+                lines.append({"text": f"{label}: {comp['name']} {comp['installed']} → {comp['target']}",
+                              "url": comp.get("release_url"), "vmid": ct["vmid"]})
                 keys.append(key)
         if cfg.notify_packages == "none":
             continue
@@ -38,7 +39,7 @@ def collect(cfg: Config, db: DB) -> tuple[list[str], list[str]]:
         key = f"{ct['vmid']}:pkg:{digest}"
         if not db.was_notified(key):
             kind = "security update" if cfg.notify_packages == "security" else "package update"
-            lines.append(f"{label}: {len(pkgs)} {kind}{'s' if len(pkgs) != 1 else ''}")
+            lines.append({"text": f"{label}: {len(pkgs)} {kind}{'s' if len(pkgs) != 1 else ''}", "url": None, "vmid": ct["vmid"]})
             keys.append(key)
     return lines, keys
 
@@ -48,7 +49,7 @@ async def send(cfg: Config, db: DB, http: httpx.AsyncClient) -> None:
     if not lines:
         return
     title = f"{len(lines)} LXC update{'s' if len(lines) != 1 else ''} available"
-    body = "\n".join(lines)
+    body = "\n".join(i["text"] + (f"\n  {i['url']}" if i["url"] else "") for i in lines)
     delivered = not (cfg.ntfy_url or cfg.webhook_url)  # nothing configured: just record them
     if cfg.ntfy_url:
         headers = {"Title": title, "Tags": "package"}
