@@ -293,3 +293,38 @@ def test_main_app_shown_without_version_file():
     assert [c["name"] for c in comps] == ["seerr"]
     assert comps[0]["missing_version"] and comps[0]["state"] == "unknown" and comps[0]["target"] == "3.0.1"
     assert comps[0]["version_file"] == "/root/.seerr"
+
+
+@pytest.mark.skipif(not DOCKER, reason="docker not available")
+def test_probe_detects_embedded_ct_script():
+    with open(os.path.join(HERE, "seerr_update_embedded.sh")) as f:
+        embedded = f.read()
+    setup = f"cat > /usr/bin/update <<'LXCWATCH_EOF'\n{embedded}LXCWATCH_EOF\nprintf '3.0.1\\n' > /root/.seerr\n"
+    r = subprocess.run(["docker", "run", "--rm", "-i", "debian:13", "sh", "-c", setup + probe_script(False)],
+                       capture_output=True, text=True, timeout=120)
+    info = parse_probe(r.stdout)
+    assert info["script"] is None and info["script_app"] == "Seerr", r.stdout[:500]
+    assert parse_checks("\n".join(info["embedded"])) == [Check("github", "seerr", "seerr-team/seerr", None, None)]
+    assert info["versions"]["/root/.seerr"] == "3.0.1"
+
+
+def test_resolve_embedded_prefers_upstream_then_falls_back():
+    import asyncio
+    from types import SimpleNamespace
+    from lxcwatch.cluster import Cluster
+
+    class FakeUpstream:
+        def __init__(self, scripts): self.scripts = scripts
+        async def ct_script(self, base, name): return self.scripts.get(name)
+
+    embedded = ['  if check_for_gh_release "seerr" "seerr-team/old-fork"; then']
+    cl = Cluster.__new__(Cluster)
+    cl.upstream = FakeUpstream({"seerr": 'check_for_gh_release "seerr" "seerr-team/seerr"'})
+    info = {"script": None, "script_app": "Seerr", "embedded": embedded, "upstream_errors": []}
+    assert [c.repo for c in asyncio.run(cl._resolve_embedded(info))] == ["seerr-team/seerr"]
+    assert info["script"] == "seerr" and info["slug"] == "seerr" and not info["upstream_errors"]
+
+    cl.upstream = FakeUpstream({})
+    info = {"script": None, "script_app": "Nginx Proxy Manager", "embedded": embedded, "upstream_errors": []}
+    assert [c.repo for c in asyncio.run(cl._resolve_embedded(info))] == ["seerr-team/old-fork"]
+    assert info["script"] == "nginxproxymanager" and info["upstream_errors"]

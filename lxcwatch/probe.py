@@ -23,6 +23,15 @@ if [ -f /usr/bin/update ]; then
     u=$(grep -oE 'https?://[^" ]+/ct/[A-Za-z0-9._-]+\.sh' /usr/bin/update | head -n1)
     if [ -n "$u" ]; then n=$(basename "$u" .sh); b=${u%/ct/*}; fi
   fi
+  # Some installs/migrations left a full copy of the ct script as
+  # /usr/bin/update. It names itself via APP="..." and loads build.func.
+  if [ -z "$n" ] && grep -q 'community-scripts' /usr/bin/update && grep -q 'build\.func' /usr/bin/update; then
+    a=$(sed -n 's/^APP="\([^"]*\)".*/\1/p' /usr/bin/update | head -n1)
+    if [ -n "$a" ]; then
+      echo "script_app=$a"
+      grep -E 'check_for_(gh|codeberg|gl)_release|^[[:space:]]*(export |local )?[A-Za-z_][A-Za-z0-9_]*=' /usr/bin/update | head -n 300 | sed 's/^/embedded:/'
+    fi
+  fi
   echo "script=$n"
   echo "slug=$s"
   echo "script_base=$b"
@@ -96,6 +105,8 @@ def parse_probe(text: str) -> dict:
         "stale_procs": [],
         "failures": [],  # [{file, code, at, errinfo}]
         "update_mtime": None,
+        "script_app": None,  # APP="..." from a ct script embedded as /usr/bin/update
+        "embedded": [],  # its release checks and assignments
         "vertimes": {},  # version file path -> mtime
         "probe_ok": False,
     }
@@ -103,6 +114,8 @@ def parse_probe(text: str) -> dict:
         if line.startswith("ver:"):
             path, _, value = line[4:].partition("=")
             info["versions"][path] = value
+        elif line.startswith("embedded:"):
+            info["embedded"].append(line[9:])
         elif line.startswith("vertime:"):
             path, _, value = line[8:].partition("=")
             if value.isdigit():

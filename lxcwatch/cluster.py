@@ -130,7 +130,9 @@ class Cluster:
     async def _resolve(self, info: dict) -> None:
         checks = []
         info["upstream_errors"] = []
-        if info["script"]:
+        if not info["script"] and info.get("script_app"):
+            checks = await self._resolve_embedded(info)
+        elif info["script"]:
             try:
                 text = await self.upstream.ct_script(info["script_base"], info["script"])
                 if text is None:
@@ -147,6 +149,26 @@ class Cluster:
                 info["upstream_errors"].append(f"{c.repo}: {e}")
         info["components"] = build_components(checks, info["versions"], latest)
         info["script_state"] = await self.upstream.script_state(info["slug"]) if info["slug"] else None
+
+    async def _resolve_embedded(self, info: dict) -> list:
+        """/usr/bin/update is a full ct script: find it upstream by its APP name."""
+        app = info["script_app"].strip().lower()
+        candidates = list(dict.fromkeys([app.replace(" ", ""), app.replace(" ", "-")]))
+        info["script_detected_from"] = "embedded"
+        for name in candidates:
+            try:
+                text = await self.upstream.ct_script(None, name)
+            except httpx.HTTPError as e:
+                info["upstream_errors"].append(f"fetching ct/{name}.sh: {e}")
+                break
+            if text is not None:
+                info["script"] = info["slug"] = name
+                return parse_checks(text)
+        # No upstream match: use the release checks from the embedded copy.
+        info["script"] = candidates[0]
+        info["upstream_errors"].append(
+            f"no upstream ct script named {' or '.join(candidates)}; using the copy in /usr/bin/update")
+        return parse_checks("\n".join(info.get("embedded", [])))
 
     # snapshots
 
