@@ -136,8 +136,14 @@ def releases_between(releases: list[dict], installed: str | None, target: str | 
     }
 
 
+def looks_like_version(value: str | None) -> bool:
+    """A single token with a digit in it; rules out marker files like ~/.hushlogin."""
+    return bool(value) and not any(c.isspace() for c in value) and any(c.isdigit() for c in value)
+
+
 def build_components(checks: list[Check], versions: dict[str, str], latest: dict[tuple[str, str], str | None]) -> list[dict]:
     """Join release checks with the version files found in the container."""
+    versions = {p: v for p, v in versions.items() if looks_like_version(v)}
     by_key = {path.rsplit("/", 1)[-1].lstrip("."): v for path, v in versions.items() if path.startswith("/root/.")}
     used: set[str] = set()
     components = []

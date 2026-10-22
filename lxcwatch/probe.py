@@ -30,12 +30,15 @@ fi
 for f in /root/.* /opt/*_version.txt; do
   [ -f "$f" ] || continue
   case "${f##*/}" in
-    .bash*|.profile|.viminfo|.lesshst|.wget-hsts|.selected_editor|.sudo_as_admin_successful|*_history|.gitconfig|.npmrc|.rnd) continue ;;
+    .bash*|.profile|.viminfo|.lesshst|.wget-hsts|.selected_editor|.sudo_as_admin_successful|*_history|.gitconfig|.npmrc|.rnd|.hushlogin|.cloud-locale-test.skip) continue ;;
   esac
   [ "$(wc -c <"$f")" -le 128 ] || continue
   [ "$(grep -c . "$f")" -le 1 ] || continue
   v=$(head -n1 "$f" | tr -d '\r')
-  case "$v" in *[[:space:]]*) continue ;; esac
+  # Only version-like values: one token containing a digit (1.2.3, v2, a SHA).
+  # This skips marker files like the empty ~/.hushlogin the scripts create.
+  case "$v" in ''|*[[:space:]]*) continue ;; esac
+  case "$v" in *[0-9]*) ;; *) continue ;; esac
   echo "ver:$f=$v"
 done
 if command -v apt-get >/dev/null 2>&1; then

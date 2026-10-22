@@ -234,3 +234,18 @@ def test_stale_process_detection():
     clean = subprocess.run(["docker", "run", "--rm", "debian:13", "sh", "-c", "echo \"[$(" + STALE_PROCS + ")]\""],
                            capture_output=True, text=True, timeout=120)
     assert clean.stdout.strip() == "[]", clean.stdout
+
+
+def test_marker_files_are_not_versions():
+    comps = build_components([], {"/root/.hushlogin": "", "/root/.flag": "yes", "/root/.app": "2.1"}, {})
+    assert [c["name"] for c in comps] == ["app"]
+
+
+@pytest.mark.skipif(not DOCKER, reason="docker not available")
+def test_probe_skips_hushlogin_and_markers():
+    setup = ("touch /root/.hushlogin /root/.cloud-locale-test.skip; printf 'enabled\\n' > /root/.someflag; "
+             "printf 'abc123def\\n' > /root/.sha; printf '2025.9.1\\n' > /root/.cloudflared;\n")
+    r = subprocess.run(["docker", "run", "--rm", "-i", "debian:13", "sh", "-c", setup + probe_script(False)],
+                       capture_output=True, text=True, timeout=120)
+    info = parse_probe(r.stdout)
+    assert info["versions"] == {"/root/.sha": "abc123def", "/root/.cloudflared": "2025.9.1"}, r.stdout
