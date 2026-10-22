@@ -31,6 +31,11 @@ KINDS = ("app", "os", "rollback")
 # TERM must be a real terminal type: the scripts call `clear`, which exits 1
 # (killing the update) under TERM=dumb or with TERM unset.
 APP_CMD = "env PHS_SILENT=1 TERM=xterm-256color update"
+# With a GitHub token: read it from stdin inside the container, so it never
+# appears in a command line (ps) or in the job script on the node.
+APP_CMD_TOKEN = "sh -c " + shlex.quote(
+    "IFS= read -r GITHUB_TOKEN; export GITHUB_TOKEN; exec " + APP_CMD + " </dev/null"
+)
 OS_CMD = "sh -c " + shlex.quote(
     "if command -v apt-get >/dev/null 2>&1; then "
     "export DEBIAN_FRONTEND=noninteractive; apt-get update && "
@@ -46,10 +51,12 @@ def clean_line(raw: bytes) -> str:
     return parts[-1].rstrip() if parts else ""
 
 
-def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target: str | None) -> str:
+def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target: str | None, token: bool = False) -> str:
     q = shlex.quote
+    token_file = f"{LOGDIR}/{job_id}.token"
     lines = [
         "#!/bin/bash",
+        f"trap 'rm -f {token_file}' EXIT",
         f"echo \"[lxcwatch] {kind} job {job_id} for CT {vmid} started $(date -Is)\"",
     ]
     if snapshot:
@@ -61,7 +68,14 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
             "  exit 0",
             "fi",
         ]
-    if kind == "app":
+    if kind == "app" and token:
+        lines += [
+            "echo '[lxcwatch] running community-scripts update (with GitHub token)'",
+            f"pct exec {vmid} -- {APP_CMD_TOKEN} < {token_file}",
+            "rc=$?",
+            f"rm -f {token_file}",
+        ]
+    elif kind == "app":
         lines += [f"echo '[lxcwatch] running community-scripts update'", f"pct exec {vmid} -- {APP_CMD} </dev/null", "rc=$?"]
     elif kind == "os":
         lines += [f"echo '[lxcwatch] upgrading OS packages'", f"pct exec {vmid} -- {OS_CMD} </dev/null", "rc=$?"]
@@ -152,17 +166,25 @@ class Jobs:
             async with self.sem:
                 self.db.update_job(job_id, status="running")
                 addr = await self.cluster.resolve(node)
-                script = node_script(job_id, vmid, kind, snap, target)
+                token = kind == "app" and bool(self.cfg.github_token)
+                script = node_script(job_id, vmid, kind, snap, target, token=token)
                 base = f"{LOGDIR}/{job_id}"
+                prep = f"mkdir -p {LOGDIR} && chmod 700 {LOGDIR}"
+                if token:
+                    # Root-only file; the job script deletes it as soon as the update exits.
+                    r = await self.ssh.run(addr, f"{prep} && (umask 077 && cat > {base}.token)", input=self.cfg.github_token + "\n", timeout=30)
+                    if not r.ok:
+                        raise JobError(f"could not prepare job on {node}: {r.err.strip() or r.rc}")
                 r = await self.ssh.run(
                     addr,
                     # Braces matter: a trailing & would background the whole
                     # chain, and background jobs read stdin from /dev/null.
-                    f"mkdir -p {LOGDIR} && cat > {base}.sh && {{ nohup setsid bash {base}.sh > {base}.log 2>&1 < /dev/null & }}",
+                    f"{prep} && cat > {base}.sh && {{ nohup setsid bash {base}.sh > {base}.log 2>&1 < /dev/null & }}",
                     input=script,
                     timeout=30,
                 )
                 if not r.ok:
+                    await self.ssh.run(addr, f"rm -f {base}.token", timeout=30)
                     raise JobError(f"could not start job on {node}: {r.err.strip() or r.rc}")
                 rc = await self._follow(job_id, addr, 0)
             await self._finish(job_id, vmid, node, kind, snap, rc)
@@ -239,7 +261,7 @@ class Jobs:
         status = "success" if rc == 0 else "failed"
         addr = self.cluster.addr(node)
         try:
-            await self.ssh.run(addr, f"rm -f {LOGDIR}/{job_id}.sh {LOGDIR}/{job_id}.log", timeout=30)
+            await self.ssh.run(addr, f"rm -f {LOGDIR}/{job_id}.sh {LOGDIR}/{job_id}.log {LOGDIR}/{job_id}.token", timeout=30)
         except Exception:
             pass
         if status == "success" and snap and self.cfg.keep_snapshots > 0:

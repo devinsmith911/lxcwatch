@@ -193,3 +193,20 @@ def test_releases_between():
     out = releases_between(rels, "0.9", "v1.5.0")  # installed older than the fetched window
     assert len(out["releases"]) == 5 and not out["complete"]
     assert releases_between(rels, "1.5.0", "1.4.2")["releases"] == []
+
+
+def test_node_script_token_stays_off_command_lines():
+    s = node_script("j4", 104, "app", None, None, token=True)
+    assert "trap 'rm -f /var/log/lxcwatch/j4.token' EXIT" in s
+    assert "< /var/log/lxcwatch/j4.token" in s
+    assert "GITHUB_TOKEN=" not in s  # read from stdin inside the container, never an argument
+    subprocess.run(["bash", "-n"], input=s.encode(), check=True)
+
+
+@pytest.mark.skipif(not DOCKER, reason="docker not available")
+def test_token_reaches_update_via_stdin():
+    from lxcwatch.jobs import APP_CMD_TOKEN
+    fake_update = 'printf "#!/bin/sh\\necho token=\\$GITHUB_TOKEN silent=\\$PHS_SILENT term=\\$TERM\\n" > /usr/bin/update && chmod +x /usr/bin/update && '
+    r = subprocess.run(["docker", "run", "--rm", "-i", "debian:13", "sh", "-c", fake_update + APP_CMD_TOKEN],
+                       input="ghp_example123\n", capture_output=True, text=True, timeout=120)
+    assert r.stdout.strip() == "token=ghp_example123 silent=1 term=xterm-256color", r.stderr

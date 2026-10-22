@@ -64,7 +64,7 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 | `LXCWATCH_SCAN_INTERVAL_MINUTES` | `360` | `0` disables scheduled scans |
 | `LXCWATCH_REFRESH_PACKAGES` | `true` | Runs `apt-get update` / `apk update` during scans |
 | `LXCWATCH_KEEP_SNAPSHOTS` | `3` | `lxcwatch-*` snapshots kept per CT (`0` = never prune) |
-| `LXCWATCH_GITHUB_TOKEN` | — | Recommended once you have more than about 15 apps (the GitHub limit is 60 requests/hour without a token) |
+| `LXCWATCH_GITHUB_TOKEN` | — | Recommended once you have more than about 15 apps (the GitHub limit is 60 requests/hour without a token). Also passed to `update` inside the containers, so app updates don't hit the limit either |
 | `LXCWATCH_NTFY_URL` / `_TOKEN` | — | ntfy topic URL |
 | `LXCWATCH_WEBHOOK_URL` | — | Receives a JSON POST: `{title, message, items: [{text, url, vmid}], url}` |
 | `LXCWATCH_NOTIFY_PACKAGES` | `security` | `none`, `security` or `all` |
@@ -73,6 +73,7 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 
 - **Security:** the SSH key is effectively root on the whole cluster, and so is anyone who can log in to the web UI. Keep the password strong and the UI off the internet. All POST and DELETE requests need an `X-Requested-With` header, so another site can't trigger an update through your browser.
 - **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph). Snapshots are off by default; tick "Take a snapshot first" in the update dialog to get one. If the snapshot fails, nothing is changed and the job fails. Containers whose bind mounts block snapshots fail the same way.
+- **GitHub token in updates:** the token goes to the container's `update` through stdin, never on a command line, so it doesn't show up in `ps` or in the job log. On the node it's a root-only file in `/var/log/lxcwatch`, deleted as soon as the update exits.
 - **Rolling back** restores the whole container, including app data written since the snapshot.
 - **"Untracked"** means lxcwatch found a version file that no release check in the script refers to. **"Unknown"** means the installed or upstream version couldn't be determined.
 - Apps installed from apt repositories (Jellyfin, Pi-hole, AdGuard and similar) have no GitHub release check. Their updates show up under OS packages.
