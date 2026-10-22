@@ -80,6 +80,15 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 - **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph). Snapshots are off by default; tick "Take a snapshot first" in the update dialog to get one. If the snapshot fails, nothing is changed and the job fails. Containers whose bind mounts block snapshots fail the same way.
 - **GitHub token in updates:** the token goes to the container's `update` through stdin, never on a command line, so it doesn't show up in `ps` or in the job log. On the node it's a root-only file in `/var/log/lxcwatch`, deleted as soon as the update exits.
 - **Restarting after OS updates:** containers share the host kernel, so an upgrade never needs a reboot for a new kernel. Running services do keep using the old libraries (OpenSSL, libc and so on) until they restart. lxcwatch detects processes still running replaced code (marked "(deleted)" in `/proc/*/maps`) and shows **restart needed**. The OS update dialog can restart the container afterwards: only if needed (the default), always or never. Each container also has a Restart button (`pct reboot`).
+- **Debian release upgrades** (e.g. 12 → 13): scans flag containers behind Debian stable, which is read from Debian's mirror, so new releases are picked up automatically. The upgrade runs from the container's details panel, one major version at a time, and isn't part of Update all. Before starting, lxcwatch checks:
+  - free disk space;
+  - held packages;
+  - `/usr` merge;
+  - third-party repos (listed and left on the old release, never switched);
+  - whether the Proxmox host's `pve-container` can run the new version;
+  - whether nesting is enabled.
+
+  The job then takes a snapshot (ticked by default), brings the current release up to date, switches only the official `*.debian.org` sources (a backup tarball is saved in `/root`), runs `upgrade --without-new-pkgs` and `full-upgrade` keeping your config files, and restarts the container. If anything fails part-way, roll back to the snapshot.
 - **Rolling back** restores the whole container, including app data written since the snapshot.
 - **"Untracked"** means lxcwatch found a version file that no release check in the script refers to. **"Unknown"** means the installed or upstream version couldn't be determined.
 - Apps installed from apt repositories (Jellyfin, Pi-hole, AdGuard and similar) have no GitHub release check. Their updates show up under OS packages.

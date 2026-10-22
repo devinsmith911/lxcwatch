@@ -18,6 +18,7 @@ from .batch import BatchError, Batches
 from .cluster import Cluster
 from .db import DB
 from .jobs import CLEAR_FAILURES, JobError, Jobs
+from .release import HOST_CHECK, container_checks, host_checks
 from .ssh import SSH
 from .upstream import FORGE_WEB, Upstream, compare_url, releases_between
 
@@ -239,6 +240,7 @@ def _summary(ct: dict) -> dict:
         "pkgmgr": info.get("pkgmgr"),
         "reboot_required": info.get("reboot_required", False),
         "stale_procs": info.get("stale_procs", []),
+        "release": info.get("release"),
         "failures": failures,
         "restart_needed": bool(info.get("reboot_required") or info.get("stale_procs")),
         "upstream_errors": info.get("upstream_errors", []),
@@ -368,6 +370,40 @@ async def clear_failures(vmid: int):
         raise HTTPException(502, r.err.strip() or f"exit {r.rc}")
     await cluster.scan_one(vmid)
     return _summary(db.container(vmid))
+
+
+@app.get("/api/containers/{vmid}/release-check")
+async def release_check(vmid: int):
+    """Pre-checks for a Debian release upgrade: container state plus the host's support."""
+    ct = db.container(vmid)
+    if not ct:
+        raise HTTPException(404, "container not found")
+    info = ct["info"] or {}
+    rel = info.get("release")
+    if not rel:
+        raise HTTPException(409, "no release upgrade available for this container")
+    checks = container_checks(info, rel)
+    try:
+        addr = await cluster.resolve(ct["node"])
+        r = await ssh.run(addr, HOST_CHECK.replace("{vmid}", str(vmid)), timeout=30)
+        checks += host_checks(r.out, rel["target"])
+    except Exception as e:
+        checks.append({"level": "warn", "text": f"Couldn't check the Proxmox host: {e}"})
+    if ct["status"] != "running":
+        checks.append({"level": "block", "text": f"The container is {ct['status']}; start it first."})
+    return {"release": rel, "checks": checks, "blocked": any(c["level"] == "block" for c in checks)}
+
+
+class ReleaseRequest(BaseModel):
+    snapshot: bool = True
+
+
+@app.post("/api/containers/{vmid}/release-upgrade")
+async def release_upgrade(vmid: int, req: ReleaseRequest):
+    try:
+        return {"job": jobs.start(vmid, "release", req.snapshot)}
+    except JobError as e:
+        raise HTTPException(409, str(e))
 
 
 @app.post("/api/containers/{vmid}/restart")

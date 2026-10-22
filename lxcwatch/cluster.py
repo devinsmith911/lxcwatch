@@ -10,6 +10,7 @@ import httpx
 from .config import Config
 from .db import DB
 from .probe import parse_probe, probe_script
+from .release import debian_stable, release_info
 from .ssh import SSH
 from .upstream import Upstream, build_components, parse_checks
 
@@ -148,6 +149,7 @@ class Cluster:
             except httpx.HTTPError as e:
                 info["upstream_errors"].append(f"{c.repo}: {e}")
         info["components"] = build_components(checks, info["versions"], latest)
+        info["release"] = release_info(info, await debian_stable(self.upstream.http, self.upstream._cache))
         info["script_state"] = await self.upstream.script_state(info["slug"]) if info["slug"] else None
 
     async def _resolve_embedded(self, info: dict) -> list:

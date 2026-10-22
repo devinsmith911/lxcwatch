@@ -5,6 +5,8 @@ containers alike. It only reads state; the optional package index refresh
 (apt-get update / apk update) is the one thing it changes.
 """
 
+from .release import PROBE_DEBIAN
+
 # Processes still running code that an upgrade replaced: their memory maps
 # show the old library/binary as "(deleted)". In an LXC (shared host kernel)
 # this, not a kernel update, is why you restart after upgrading packages.
@@ -15,6 +17,7 @@ REFRESH=__REFRESH__
 if [ -r /etc/os-release ]; then . /etc/os-release; fi
 echo "os=${PRETTY_NAME:-unknown}"
 echo "os_id=${ID:-}"
+__DEBIAN__
 if [ -f /usr/bin/update ]; then
   n=$(sed -n 's/^export UPDATE_SCRIPT_NAME="\([^"]*\)"$/\1/p' /usr/bin/update | head -n1)
   s=$(sed -n 's/^export SCRIPT_SLUG="\([^"]*\)"$/\1/p' /usr/bin/update | head -n1)
@@ -87,7 +90,8 @@ echo "probe_ok=1"
 
 
 def probe_script(refresh: bool) -> str:
-    return PROBE.replace("__REFRESH__", "1" if refresh else "0").replace("__STALE__", STALE_PROCS)
+    return (PROBE.replace("__REFRESH__", "1" if refresh else "0").replace("__STALE__", STALE_PROCS)
+            .replace("__DEBIAN__", PROBE_DEBIAN))
 
 
 def parse_probe(text: str) -> dict:
@@ -105,6 +109,12 @@ def parse_probe(text: str) -> dict:
         "stale_procs": [],
         "failures": [],  # [{file, code, at, errinfo}]
         "update_mtime": None,
+        "os_version": None,
+        "os_codename": None,
+        "disk_free_kb": None,
+        "held": [],
+        "usr_unmerged": False,
+        "apt_sources": [],  # [{file, line}]
         "script_app": None,  # APP="..." from a ct script embedded as /usr/bin/update
         "embedded": [],  # its release checks and assignments
         "vertimes": {},  # version file path -> mtime
@@ -114,6 +124,9 @@ def parse_probe(text: str) -> dict:
         if line.startswith("ver:"):
             path, _, value = line[4:].partition("=")
             info["versions"][path] = value
+        elif line.startswith("aptsrc:"):
+            path, _, src = line[7:].partition(":")
+            info["apt_sources"].append({"file": path, "line": src.strip()})
         elif line.startswith("embedded:"):
             info["embedded"].append(line[9:])
         elif line.startswith("vertime:"):
@@ -146,6 +159,12 @@ def parse_probe(text: str) -> dict:
             key, _, value = line.partition("=")
             if key == "stale_procs":
                 info["stale_procs"] = value.split()
+            elif key == "held":
+                info["held"] = value.split()
+            elif key == "disk_free_kb":
+                info["disk_free_kb"] = int(value) if value.isdigit() else None
+            elif key == "usr_unmerged":
+                info["usr_unmerged"] = value == "1"
             elif key in ("pkg_refresh_failed", "reboot_required", "probe_ok"):
                 info[key] = value == "1"
             elif key in info:

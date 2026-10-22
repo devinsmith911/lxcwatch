@@ -328,3 +328,55 @@ def test_resolve_embedded_prefers_upstream_then_falls_back():
     info = {"script": None, "script_app": "Nginx Proxy Manager", "embedded": embedded, "upstream_errors": []}
     assert [c.repo for c in asyncio.run(cl._resolve_embedded(info))] == ["seerr-team/old-fork"]
     assert info["script"] == "nginxproxymanager" and info["upstream_errors"]
+
+
+def test_release_info_and_container_checks():
+    from lxcwatch.release import container_checks, release_info
+    info = {"os_id": "debian", "os_version": "12", "os_codename": "bookworm", "disk_free_kb": 2 * 1024 * 1024,
+            "held": ["nodejs"], "usr_unmerged": False, "apt_sources": [
+                {"file": "/etc/apt/sources.list.d/debian.sources", "line": "http://deb.debian.org/debian bookworm bookworm-updates"},
+                {"file": "/etc/apt/sources.list.d/docker.list", "line": "deb https://download.docker.com/linux/debian bookworm stable"}]}
+    rel = release_info(info, 13)
+    assert rel["from"] == "bookworm" and rel["to"] == "trixie" and rel["target"] == 13
+    assert [s["file"] for s in rel["third_party"]] == ["/etc/apt/sources.list.d/docker.list"]
+    levels = {c["text"].split()[0]: c["level"] for c in container_checks(info, rel)}
+    assert "block" not in levels.values()
+    texts = " ".join(c["text"] for c in container_checks(info, rel))
+    assert "download.docker.com" in texts and "nodejs" in texts and "3 GB" in texts
+    assert release_info({**info, "os_version": "13"}, 13) is None
+    assert release_info({**info, "os_id": "ubuntu"}, 13) is None
+    assert release_info({**info, "os_version": "11"}, 13)["to"] == "bookworm"  # one major at a time
+    low = container_checks({**info, "disk_free_kb": 500 * 1024}, rel)
+    assert any(c["level"] == "block" for c in low)
+
+
+def test_host_checks():
+    from lxcwatch.release import host_checks
+    soft = "pveversion=pve-manager/8.4.1\npm:DEBIAN_MAXIMUM_RELEASE => 14\ncfg:features: nesting=1\n"
+    assert [c["level"] for c in host_checks(soft, 13)] == ["ok"]
+    assert host_checks(soft.replace("14", "12"), 13)[0]["level"] == "warn"
+    old = "pveversion=pve-manager/7.4\npm:unsupported debian version\npm:version <= 12\ncfg:unprivileged: 1\n"
+    checks = host_checks(old, 13)
+    assert checks[0]["level"] == "block" and "nesting" in checks[1]["text"]
+
+
+def test_release_job_script():
+    s = node_script("j10", 110, "release", "lxcwatch-x", "bookworm:trixie")
+    assert "pct snapshot 110 lxcwatch-x" in s and "FROM=bookworm" in s and "TO=trixie" in s and "pct reboot 110" in s
+    subprocess.run(["bash", "-n"], input=s.encode(), check=True)
+    from lxcwatch.release import upgrade_script
+    with pytest.raises(ValueError):
+        upgrade_script("bookworm", "trixie; rm -rf /")
+
+
+@pytest.mark.skipif(not DOCKER, reason="docker not available")
+def test_probe_collects_debian_release_details():
+    from lxcwatch.release import release_info
+    r = subprocess.run(["docker", "run", "--rm", "-i", "debian:12", "sh", "-c", probe_script(False)],
+                       capture_output=True, text=True, timeout=120)
+    info = parse_probe(r.stdout)
+    assert info["os_version"] == "12" and info["os_codename"] == "bookworm"
+    assert info["disk_free_kb"] > 0 and not info["usr_unmerged"]
+    assert any("deb.debian.org" in s["line"] and "bookworm" in s["line"] for s in info["apt_sources"]), info["apt_sources"]
+    rel = release_info(info, 13)
+    assert rel["to"] == "trixie" and rel["third_party"] == []

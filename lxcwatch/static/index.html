@@ -247,6 +247,19 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   </form>
 </dialog>
 
+<dialog id="reldlg">
+  <form method="dialog">
+    <h3 style="margin-top:0" id="reltitle"></h3>
+    <div id="relbody" class="small"></div>
+    <p><label class="check"><input type="checkbox" id="relsnap" checked> Take a snapshot first (strongly recommended)</label></p>
+    <p class="muted small">Takes several minutes. The container restarts at the end. Apps that depend on third-party repos or specific library versions can break. Check them afterwards, and roll back to the snapshot if needed.</p>
+    <div class="actions" style="justify-content:flex-end">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary" id="relgo" disabled>Upgrade</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="confirm">
   <form method="dialog">
     <h3 id="ctitle" style="margin-top:0"></h3>
@@ -355,7 +368,8 @@ function compHtml(c) {
 
 function pkgHtml(c) {
   if (!c.pkgmgr) return `<span class="muted">—</span>`;
-  const restart = c.restart_needed ? ` <span class="badge warn" title="${esc(c.stale_procs.length ? `Still running replaced code: ${c.stale_procs.join(", ")}` : "The container asks for a reboot")}">restart needed</span>` : "";
+  const restart = (c.restart_needed ? ` <span class="badge warn" title="${esc(c.stale_procs.length ? `Still running replaced code: ${c.stale_procs.join(", ")}` : "The container asks for a reboot")}">restart needed</span>` : "")
+    + (c.release ? ` <span class="badge info" title="Release upgrade available, see Details">Debian ${c.release.target} available</span>` : "");
   if (!c.pkg_count) return `<span class="badge ok">up to date</span>${restart}`;
   return `<span class="badge warn">${c.pkg_count} pending</span>${c.pkg_security ? ` <span class="badge bad">${c.pkg_security} security</span>` : ""}${restart}`;
 }
@@ -498,6 +512,36 @@ function renderBatch(b) {
   if (b.status !== "running") state.batchStopping = false;
 }
 
+const CHECK_ICON = { ok: "✓", warn: "⚠", block: "⛔" };
+
+async function openReleaseUpgrade(vmid) {
+  const c = state.data.containers.find(x => x.vmid === vmid);
+  if (!c?.release) return;
+  const dlg = $("#reldlg");
+  $("#reltitle").textContent = `Upgrade ${c.vmid} · ${c.name} to Debian ${c.release.target} (${c.release.to})?`;
+  $("#relbody").innerHTML = `<p class="muted">Running pre-checks…</p>`;
+  $("#relsnap").checked = true;
+  $("#relgo").disabled = true;
+  dlg.returnValue = "";
+  dlg.showModal();
+  const closed = new Promise(res => dlg.addEventListener("close", () => res(dlg.returnValue === "ok"), { once: true }));
+  try {
+    const r = await api(`/api/containers/${vmid}/release-check`);
+    $("#relbody").innerHTML = `<div class="list">${r.checks.map(ch => `<div><span><span class="badge ${ch.level === "ok" ? "ok" : ch.level === "warn" ? "warn" : "bad"}">${CHECK_ICON[ch.level]}</span> ${esc(ch.text)}</span></div>`).join("")}</div>
+      ${r.blocked ? `<p class="err">Fix the ⛔ items before upgrading.</p>` : ""}`;
+    $("#relgo").disabled = r.blocked;
+    $("#relgo").textContent = `Upgrade to Debian ${c.release.target}`;
+  } catch (e) {
+    $("#relbody").innerHTML = `<p class="err">${esc(e.message)}</p>`;
+  }
+  if (!(await closed)) return;
+  try {
+    const r = await api(`/api/containers/${vmid}/release-upgrade`, { method: "POST", body: JSON.stringify({ snapshot: $("#relsnap").checked }) });
+    openJob(r.job, vmid);
+    refresh();
+  } catch (e) { alert(e.message); }
+}
+
 function renderConn(conn) {
   if (!conn) return;
   const el = $("#conn");
@@ -632,6 +676,10 @@ function renderDetails(first) {
       ${f.errinfo.length ? `<pre class="log" style="margin-top:8px;max-height:240px">${esc(f.errinfo.join("\n"))}</pre>` : ""}
     </div>`).join("")}
     ${c.restart_needed ? `<p class="whatsnew small"><b>Restart needed.</b> ${c.stale_procs.length ? `These are still running code that an update replaced: <code>${esc(c.stale_procs.join(", "))}</code>` : "The container reports that it needs a reboot."}</p>` : ""}
+    ${c.release ? `<h3>Release upgrade</h3><div class="whatsnew small"><div class="head">
+      <span><b>Debian ${c.release.current} (${esc(c.release.from)}) → ${c.release.target} (${esc(c.release.to)})</b> is available${c.release.target < c.release.stable ? `, one step towards Debian ${c.release.stable}` : ""}.</span>
+      <button class="primary" data-release="${c.vmid}" ${c.status !== "running" || c.job ? "disabled" : ""}>Upgrade to Debian ${c.release.target}…</button></div>
+      <div class="muted" style="margin-top:4px">Runs pre-checks first. Switches the official Debian sources, upgrades every package and restarts the container.</div></div>` : ""}
     <h3>Pending OS packages (${c.pkg_count})</h3>${pk}
     <h3>Snapshots</h3>${snaps}
     <h3>Job history</h3>${jobs}`;
@@ -759,6 +807,8 @@ document.addEventListener("click", async ev => {
     const c = state.data.containers.find(x => x.vmid === id); if (c) c.scanning = true; render();
     await api(`/api/containers/${id}/scan`, { method: "POST" }).catch(e => alert(e.message));
     refresh();
+  } else if (t.dataset.release) {
+    openReleaseUpgrade(Number(t.dataset.release));
   } else if (t.id === "updateall") {
     openUpdateAll();
   } else if (t.id === "batchstop") {
