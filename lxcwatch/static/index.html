@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lxcwatch</title>
+<script>try { const t = JSON.parse(localStorage.getItem("lxcwatch.theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
 :root {
+  color-scheme: light;
   --bg: #f3f5fb; --panel: #ffffff; --text: #1b1f2a; --muted: #636c80; --border: #dde2ee;
   --accent: #4f46e5; --accent-text: #ffffff; --accent-soft: #eceafe;
   --ok: #138a52; --warn: #b26a00; --bad: #c8304a; --info: #0f7ea8; --idle: #7a8296;
@@ -14,7 +16,8 @@
   --hero: linear-gradient(120deg, #4338ca 0%, #6d28d9 45%, #0e7490 100%); --hero-text: #ffffff; --hero-muted: rgba(255,255,255,.78);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0f1218; --panel: #171b23; --text: #e6e9f0; --muted: #8b94a8; --border: #29303c;
     --accent: #8b85ff; --accent-text: #0d0f16; --accent-soft: #24224a;
     --ok: #4fd18b; --warn: #f2b155; --bad: #ff7a90; --info: #4cc4ec; --idle: #8b94a8;
@@ -22,6 +25,15 @@
     --chip: #222833; --code: #0b0e12; --code-text: #d8dee6;
     --hero: linear-gradient(120deg, #2e2a8a 0%, #4c1d95 45%, #0b5566 100%); --hero-text: #f3f4ff; --hero-muted: rgba(243,244,255,.72);
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1218; --panel: #171b23; --text: #e6e9f0; --muted: #8b94a8; --border: #29303c;
+  --accent: #8b85ff; --accent-text: #0d0f16; --accent-soft: #24224a;
+  --ok: #4fd18b; --warn: #f2b155; --bad: #ff7a90; --info: #4cc4ec; --idle: #8b94a8;
+  --ok-bg: #133225; --warn-bg: #3a2a10; --bad-bg: #3d1820; --info-bg: #0f2f3c; --idle-bg: #222833;
+  --chip: #222833; --code: #0b0e12; --code-text: #d8dee6;
+  --hero: linear-gradient(120deg, #2e2a8a 0%, #4c1d95 45%, #0b5566 100%); --hero-text: #f3f4ff; --hero-muted: rgba(243,244,255,.72);
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -128,6 +140,7 @@ label.check { display: inline-flex; gap: 6px; align-items: center; }
   </div>
   <div class="actions" style="align-items:center">
     <details class="conn" id="conn"><summary><span class="dot"></span><span>Connecting…</span></summary></details>
+    <button id="themebtn" title="Theme"></button>
     <button id="scanbtn" class="primary">Scan now</button>
   </div>
 </header>
@@ -534,6 +547,22 @@ $("#pagesize").value = String(state.pageSize);
 $("#pagesize").addEventListener("change", e => { state.pageSize = Number(e.target.value); store("pageSize", state.pageSize); state.page = 1; render(); });
 $("#prev").addEventListener("click", () => { state.page--; render(); scrollTo({ top: 0, behavior: "smooth" }); });
 $("#next").addEventListener("click", () => { state.page++; render(); scrollTo({ top: 0, behavior: "smooth" }); });
+const THEMES = { system: "◐ System", light: "☀ Light", dark: "☾ Dark" };
+function applyTheme(t) {
+  if (t === "system") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+  $("#themebtn").textContent = THEMES[t];
+  $("#themebtn").title = `Theme: ${t} (click to change)`;
+}
+let theme = stored("theme", "system");
+if (!THEMES[theme]) theme = "system";
+applyTheme(theme);
+$("#themebtn").addEventListener("click", () => {
+  const order = Object.keys(THEMES);
+  theme = order[(order.indexOf(theme) + 1) % order.length];
+  store("theme", theme);
+  applyTheme(theme);
+});
 for (const [id, key] of [["hidestopped", "hideStopped"], ["hideunknown", "hideUnknown"]]) {
   $(`#${id}`).checked = state[key];
   $(`#${id}`).addEventListener("change", e => { state[key] = e.target.checked; store(key, state[key]); state.page = 1; render(); });
