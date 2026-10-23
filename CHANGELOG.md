@@ -1,7 +1,5 @@
 # Changelog
 
-Every push to `main` publishes a package versioned `0.1.<commit count>`. This file lists the user-facing changes in each published version, newest first.
-
 ## 0.1.30 (2026-10-23)
 
 ### Changed
