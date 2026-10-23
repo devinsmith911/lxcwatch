@@ -33,6 +33,7 @@ Nothing updates automatically. Updates only run when you click one of the update
 1. Create a small Debian 12/13 or Ubuntu 24.04 LXC (1 core, 512 MB is plenty). Then, as root inside it, add the lxcwatch apt repository and install:
 
    ```sh
+   apt install -y curl
    install -d -m 755 /etc/apt/keyrings
    curl -fsSL https://devinsmith911.github.io/lxcwatch/lxcwatch.asc -o /etc/apt/keyrings/lxcwatch.asc
    echo "deb [signed-by=/etc/apt/keyrings/lxcwatch.asc] https://devinsmith911.github.io/lxcwatch stable main" > /etc/apt/sources.list.d/lxcwatch.list
@@ -52,6 +53,8 @@ Nothing updates automatically. Updates only run when you click one of the update
 3. Set `LXCWATCH_PVE_HOST` in `/etc/lxcwatch.env`, then run `systemctl restart lxcwatch`.
 
 4. Open `http://<lxc-ip>:8080`, ideally behind your reverse proxy with HTTPS.
+
+`/opt/lxcwatch/venv` belongs to the package and is rebuilt on every install or upgrade, so don't edit or delete it. If it goes missing, run `dpkg-reconfigure lxcwatch` to rebuild it.
 
 **Upgrading:** `apt update && apt upgrade`. Every push to `main` publishes a new version (`0.1.<commit count>`), so lxcwatch shows its own update under Packages too. Your config, key and database are kept. `apt purge lxcwatch` removes all of them.
 
