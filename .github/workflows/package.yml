@@ -62,51 +62,18 @@ jobs:
           PIP_BREAK_SYSTEM_PACKAGES: "1"
         run: packaging/build-deb.sh | tee /tmp/built
       -
-        # The automatic token may not be allowed to write packages; a
-        # PACKAGES_TOKEN secret (token with package write scope) takes precedence.
+        # Needs a PACKAGES_TOKEN secret: a token of the owner with package
+        # read/write (the automatic CI token can't publish packages).
         name: Publish
         env:
-          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
-          AUTO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.PACKAGES_TOKEN }}
           OWNER: ${{ github.repository_owner }}
-          API: ${{ github.server_url }}/api/v1
         run: |
-          if [ -n "$PACKAGES_TOKEN" ]; then
-            TOKEN=$PACKAGES_TOKEN
-            # Say which account the token belongs to (never the token itself).
-            who=$(curl -s -H "Authorization: token $TOKEN" "$API/user" | sed -n 's/.*"login":"\([^"]*\)".*/\1/p')
-            echo "Using the PACKAGES_TOKEN secret (belongs to: ${who:-unknown, or the token lacks the read:user scope})"
-            # the self-hosted server's API names a missing scope in its error message.
-            probe=$(curl -s -w ' [%{http_code}]' -H "Authorization: token $TOKEN" "$API/packages/$OWNER?limit=1")
-          else
-            TOKEN=$AUTO_TOKEN
-            echo "No PACKAGES_TOKEN secret is visible to this run; using the automatic token."
-          fi
           deb="src/$(tail -n1 /tmp/built)"
-          upload() { curl -s -o /tmp/response -w '%{http_code}' "$@" --upload-file "$deb" "$PACKAGES_URL/pool/stable/main/upload"; }
-          code=$(upload --user "$OWNER:$TOKEN")
-          if [ "$code" = 401 ] || [ "$code" = 403 ]; then
-            echo "Basic auth upload got $code; retrying with the token in a header"
-            code=$(upload -H "Authorization: token $TOKEN")
-          fi
+          code=$(curl -s -o /tmp/response -w '%{http_code}' --user "$OWNER:$TOKEN" \
+            --upload-file "$deb" "$PACKAGES_URL/pool/stable/main/upload")
           case "$code" in
             201) echo "Published $(basename "$deb")" ;;
             409) echo "$(basename "$deb") is already published" ;;
-            401|403)
-              echo "the self-hosted git server refused the upload ($code): $(cat /tmp/response)"
-              if [ -n "$PACKAGES_TOKEN" ]; then
-                # the self-hosted git server answers 401 when the account lacks access and 403 when
-                # the token's scopes don't include write:package.
-                if [ "$code" = 403 ]; then
-                  echo "403 means the token is valid but lacks the write:package scope. Create a new token"
-                  echo "with package set to 'Read and write' and replace the PACKAGES_TOKEN secret."
-                else
-                  echo "401 means the token's account can't publish $OWNER's packages; use a token of $OWNER."
-                fi
-              else
-                echo "Add a repository secret (Settings > Actions > Secrets, not Variables) named exactly"
-                echo "PACKAGES_TOKEN: a token of $OWNER with package: Read and write."
-              fi
-              exit 1 ;;
-            *) echo "Upload failed ($code)"; cat /tmp/response; exit 1 ;;
+            *) echo "Upload failed ($code): $(cat /tmp/response)"; exit 1 ;;
           esac
