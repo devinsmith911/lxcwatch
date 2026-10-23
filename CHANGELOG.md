@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.33 (2026-10-23)
+
+### Added
+- **Details shows how long the container has been running**, and when it last started, e.g. "Running for 3d 4h · started 20 Oct, 16:05". If the last job (update, restart, release upgrade or rollback) restarted the container, it says so. The start time comes from Proxmox's uptime and refreshes with each scan.
+
 ## 0.1.32 (2026-10-23)
 
 ### Changed

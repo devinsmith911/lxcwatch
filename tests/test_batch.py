@@ -110,3 +110,37 @@ def test_only_one_batch_at_a_time():
         finally:
             await batches.task
     assert "already in progress" in asyncio.run(go())
+
+
+def test_db_migration_adds_started_at(tmp_path):
+    import sqlite3
+    from lxcwatch.db import DB
+    old = sqlite3.connect(tmp_path / "lxcwatch.db")
+    old.execute("CREATE TABLE containers (vmid INTEGER PRIMARY KEY, node TEXT NOT NULL, name TEXT, status TEXT, "
+                "tags TEXT, info TEXT, error TEXT, scanned_at REAL, seen_at REAL)")
+    old.execute("INSERT INTO containers (vmid, node, name, status) VALUES (101, 'pve1', 'old', 'running')")
+    old.commit(); old.close()
+    db = DB(str(tmp_path))
+    assert db.container(101)["started_at"] is None  # existing rows survive
+    db.upsert_seen(101, "pve1", "old", "running", "", 1000.0)
+    assert db.container(101)["started_at"] == 1000.0
+
+
+def test_discover_records_start_time(tmp_path, monkeypatch):
+    import time
+    from lxcwatch.cluster import Cluster
+    from lxcwatch.db import DB
+    monkeypatch.setattr(time, "time", lambda: 10_000.0)
+    db = DB(str(tmp_path))
+    cl = Cluster.__new__(Cluster)
+    cl.db, cl.cfg, cl.nodes = db, type("C", (), {"pve_host": "h", "node_addresses": {}})(), {}
+
+    async def pvesh(path, host=None, timeout=60):
+        if path == "/cluster/status":
+            return [{"type": "node", "name": "pve1", "ip": "10.0.0.1"}]
+        return [{"type": "lxc", "vmid": 101, "node": "pve1", "name": "up", "status": "running", "uptime": 3600},
+                {"type": "lxc", "vmid": 102, "node": "pve1", "name": "down", "status": "stopped", "uptime": 0}]
+    cl.pvesh = pvesh
+    asyncio.run(cl.discover())
+    assert db.container(101)["started_at"] == 10_000.0 - 3600
+    assert db.container(102)["started_at"] is None

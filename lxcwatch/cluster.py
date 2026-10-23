@@ -74,7 +74,10 @@ class Cluster:
         resources = await self.pvesh("/cluster/resources --type vm")
         cts = [r for r in resources if r.get("type") == "lxc" and not r.get("template")]
         for ct in cts:
-            self.db.upsert_seen(int(ct["vmid"]), ct["node"], ct.get("name") or "", ct.get("status") or "", ct.get("tags") or "")
+            # Proxmox reports uptime in seconds for running containers.
+            uptime = ct.get("uptime") if ct.get("status") == "running" else None
+            started_at = time.time() - uptime if uptime else None
+            self.db.upsert_seen(int(ct["vmid"]), ct["node"], ct.get("name") or "", ct.get("status") or "", ct.get("tags") or "", started_at)
         self.db.forget_missing({int(ct["vmid"]) for ct in cts})
         return cts
 

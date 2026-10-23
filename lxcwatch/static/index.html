@@ -347,6 +347,25 @@ async function api(path, opts = {}) {
   return body;
 }
 
+function duration(s) {
+  s = Math.max(0, Math.floor(s));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+
+// When the container last started, and whether the last job did that.
+function uptimeHtml(c) {
+  if (c.status !== "running") return `<p class="small muted">Not running (${esc(c.status)}).</p>`;
+  if (!c.started_at) return "";
+  const started = new Date(c.started_at * 1000);
+  const j = c.last_job;
+  // A restart during (or just after) the job's run counts as caused by it.
+  const byJob = j && c.started_at >= j.created_at - 5 && c.started_at <= (j.finished_at || Date.now() / 1000) + 120;
+  return `<p class="small"><span class="muted">Running for</span> <b>${duration(Date.now() / 1000 - c.started_at)}</b>
+    <span class="muted">· started ${started.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
+    ${byJob ? ` <span class="badge info">restarted by the last ${esc(KIND_LABEL[j.kind] || j.kind)}</span>` : ""}</p>`;
+}
+
 function until(ts) {
   const s = ts - Date.now() / 1000;
   if (s < 90) return "any moment";
@@ -716,6 +735,7 @@ function renderDetails(first) {
       <button data-rescan="${c.vmid}" ${c.scanning || c.status !== "running" ? "disabled" : ""}>${c.scanning ? "Scanning…" : "Rescan"}</button>
       ${c.job ? `<button data-job="${esc(c.job)}">Live log</button>` : ""}
     </div>
+    ${uptimeHtml(c)}
     ${c.error ? `<p class="err">${esc(c.error)}</p>` : ""}
     <h3>App versions</h3>${scriptLinks}${comps}
     ${retired(c) ? `<div class="whatsnew small" style="border-color:color-mix(in srgb, var(--bad) 35%, var(--border));background:color-mix(in srgb, var(--bad) 6%, var(--panel))">

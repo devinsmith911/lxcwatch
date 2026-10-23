@@ -246,6 +246,7 @@ def _summary(ct: dict) -> dict:
         "upstream_errors": info.get("upstream_errors", []),
         "error": ct["error"],
         "scanned_at": ct["scanned_at"],
+        "started_at": ct.get("started_at"),
         "scanning": ct["vmid"] in cluster.scanning,
         "job": jobs.active.get(ct["vmid"]),
         "last_job": last[0] if last else None,

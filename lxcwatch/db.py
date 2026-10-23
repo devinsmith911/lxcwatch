@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS containers (
     info TEXT,
     error TEXT,
     scanned_at REAL,
-    seen_at REAL
+    seen_at REAL,
+    started_at REAL
 );
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
@@ -49,6 +50,11 @@ class DB:
         with self.lock:
             self.conn.execute("PRAGMA journal_mode=WAL")
             self.conn.executescript(SCHEMA)
+            # Columns added after the first release.
+            cols = {r[1] for r in self.conn.execute("PRAGMA table_info(containers)")}
+            if "started_at" not in cols:
+                self.conn.execute("ALTER TABLE containers ADD COLUMN started_at REAL")
+                self.conn.commit()
 
     def _exec(self, sql: str, params=()) -> sqlite3.Cursor:
         with self.lock, self.conn:
@@ -60,12 +66,12 @@ class DB:
 
     # containers
 
-    def upsert_seen(self, vmid: int, node: str, name: str, status: str, tags: str) -> None:
+    def upsert_seen(self, vmid: int, node: str, name: str, status: str, tags: str, started_at: float | None = None) -> None:
         self._exec(
-            """INSERT INTO containers (vmid, node, name, status, tags, seen_at) VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO containers (vmid, node, name, status, tags, seen_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT (vmid) DO UPDATE SET node=excluded.node, name=excluded.name,
-               status=excluded.status, tags=excluded.tags, seen_at=excluded.seen_at""",
-            (vmid, node, name, status, tags, time.time()),
+               status=excluded.status, tags=excluded.tags, seen_at=excluded.seen_at, started_at=excluded.started_at""",
+            (vmid, node, name, status, tags, time.time(), started_at),
         )
 
     def save_scan(self, vmid: int, info: dict | None, error: str | None) -> None:
