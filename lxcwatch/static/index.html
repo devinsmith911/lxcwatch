@@ -422,6 +422,8 @@ function rowHtml(c) {
   const status = running ? "" : ` <span class="badge">${esc(c.status)}</span>`;
   const err = c.error ? `<div class="err small">${esc(c.error)}</div>` : "";
   const upErr = c.upstream_errors.length ? `<div class="err small">${esc(c.upstream_errors.join("; "))}</div>` : "";
+  // Update buttons only appear when there's something to update; Details always
+  // has them for a manual run.
   const job = busy ? `<span class="badge warn">updating…</span>` : c.last_job?.status === "failed" ? `<span class="badge bad">last ${esc(KIND_LABEL[c.last_job.kind] || c.last_job.kind)} failed</span>` : "";
   return `<tr class="r-${rowState(c)}${state.selected.has(c.vmid) ? " selected" : ""}">
     <td><input type="checkbox" data-sel="${c.vmid}" ${state.selected.has(c.vmid) ? "checked" : ""} aria-label="Select ${c.vmid}"></td>
@@ -433,8 +435,8 @@ function rowHtml(c) {
     <td data-label="Scanned:" class="small muted">${c.scanning ? "scanning…" : ago(c.scanned_at)}</td>
     <td><div class="actions">
       ${job}
-      <button data-act="app" data-id="${c.vmid}" ${!running || busy || !c.script ? "disabled" : ""} class="${c.outdated ? "primary" : ""}">Update app</button>
-      <button data-act="os" data-id="${c.vmid}" ${!running || busy || !c.pkgmgr ? "disabled" : ""}>Update packages</button>
+      ${running && !busy && c.script && (c.outdated || c.components.some(x => x.missing_version)) ? `<button data-act="app" data-id="${c.vmid}" class="primary">Update app</button>` : ""}
+      ${running && !busy && c.pkgmgr && c.pkg_count ? `<button data-act="os" data-id="${c.vmid}">Update packages</button>` : ""}
       <button data-act="details" data-id="${c.vmid}">Details</button>
     </div></td></tr>`;
 }
