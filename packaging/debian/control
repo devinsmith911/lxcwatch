@@ -5,7 +5,7 @@ Priority: optional
 Architecture: all
 Installed-Size: @SIZE@
 Depends: python3 (>= 3.11), python3-venv, openssh-client, passwd, util-linux
-Maintainer: Devin Smith <me@devinsmith.co.za>
+Maintainer: Devin Smith <info@dsmithtech.com>
 Homepage: https://github.com/devinsmith911/lxcwatch
 Description: track and update community-scripts LXCs across a Proxmox cluster
  Web dashboard that shows installed app versions, pending package updates
