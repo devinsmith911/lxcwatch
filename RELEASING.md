@@ -2,7 +2,7 @@
 
 Pushes to `main` only run the tests. A release is made by pushing a version tag.
 
-1. Add a `## X.Y.Z (YYYY-MM-DD)` entry at the top of [CHANGELOG.md](CHANGELOG.md), describing the changes for users, and commit it to `main`.
+1. In [CHANGELOG.md](CHANGELOG.md), rename the `## Unreleased` section to `## X.Y.Z (YYYY-MM-DD)`, or add that entry if there's no Unreleased section, and commit it to `main`. Between releases, note user-facing changes under `## Unreleased`.
 2. Tag that commit with the plain version, with no `v` prefix, and push the tag:
 
    ```sh

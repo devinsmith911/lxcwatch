@@ -44,6 +44,8 @@ class Config:
     website_url: str
     ntfy_url: str | None
     ntfy_token: str | None
+    pushover_token: str | None
+    pushover_user: str | None
     webhook_url: str | None
     notify_packages: str  # none | security | all
     public_url: str | None
@@ -62,6 +64,9 @@ def load() -> Config:
     scan_on_startup = (_env("SCAN_ON_STARTUP", "overdue") or "overdue").lower()
     if scan_on_startup not in ("overdue", "always", "never"):
         raise SystemExit("LXCWATCH_SCAN_ON_STARTUP must be overdue, always or never")
+    pushover_token, pushover_user = _env("PUSHOVER_TOKEN"), _env("PUSHOVER_USER")
+    if bool(pushover_token) != bool(pushover_user):
+        raise SystemExit("Pushover needs both LXCWATCH_PUSHOVER_TOKEN and LXCWATCH_PUSHOVER_USER")
     notify_packages = (_env("NOTIFY_PACKAGES", "security") or "security").lower()
     if notify_packages not in ("none", "security", "all"):
         raise SystemExit("LXCWATCH_NOTIFY_PACKAGES must be none, security or all")
@@ -84,6 +89,8 @@ def load() -> Config:
         website_url=_env("WEBSITE_URL", "https://community-scripts.org"),
         ntfy_url=_env("NTFY_URL"),
         ntfy_token=_env("NTFY_TOKEN"),
+        pushover_token=pushover_token,
+        pushover_user=pushover_user,
         webhook_url=_env("WEBHOOK_URL"),
         notify_packages=notify_packages,
         public_url=_env("PUBLIC_URL"),

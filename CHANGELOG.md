@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Pushover notifications:** set `LXCWATCH_PUSHOVER_TOKEN` (an application token) and `LXCWATCH_PUSHOVER_USER` (your user key). You get the same notifications as ntfy, each announced once, cut to Pushover's 1024-character limit when there are many.
+
 ## 0.1.35 (2026-10-23)
 
 ### Changed

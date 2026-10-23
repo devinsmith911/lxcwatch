@@ -10,6 +10,22 @@ from .db import DB
 
 log = logging.getLogger(__name__)
 
+PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
+PUSHOVER_MAX = 1024  # Pushover's message limit, in characters
+
+
+def pushover_message(lines: list[dict]) -> str:
+    """The notification text, cut to fit Pushover's limit."""
+    out: list[str] = []
+    for n, item in enumerate(lines):
+        entry = item["text"] + (f"\n  {item['url']}" if item["url"] else "")
+        rest = len(lines) - n - 1
+        more = f"\n…and {rest} more" if rest else ""
+        if len("\n".join(out + [entry])) + len(more) > PUSHOVER_MAX:
+            return "\n".join(out) + f"\n…and {len(lines) - n} more"
+        out.append(entry)
+    return "\n".join(out)
+
 
 def collect(cfg: Config, db: DB) -> tuple[list[dict], list[str]]:
     """Return (items, dedupe keys) for updates not yet notified."""
@@ -50,7 +66,7 @@ async def send(cfg: Config, db: DB, http: httpx.AsyncClient) -> None:
         return
     title = f"{len(lines)} LXC update{'s' if len(lines) != 1 else ''} available"
     body = "\n".join(i["text"] + (f"\n  {i['url']}" if i["url"] else "") for i in lines)
-    delivered = not (cfg.ntfy_url or cfg.webhook_url)  # nothing configured: just record them
+    delivered = not (cfg.ntfy_url or cfg.webhook_url or cfg.pushover_token)  # nothing configured: just record them
     if cfg.ntfy_url:
         headers = {"Title": title, "Tags": "package"}
         if cfg.ntfy_token:
@@ -62,6 +78,15 @@ async def send(cfg: Config, db: DB, http: httpx.AsyncClient) -> None:
             delivered = True
         except httpx.HTTPError as e:
             log.warning("ntfy notification failed: %s", e)
+    if cfg.pushover_token:
+        data = {"token": cfg.pushover_token, "user": cfg.pushover_user, "title": title, "message": pushover_message(lines)}
+        if cfg.public_url:
+            data.update(url=cfg.public_url, url_title="Open lxcwatch")
+        try:
+            (await http.post(PUSHOVER_URL, data=data)).raise_for_status()
+            delivered = True
+        except httpx.HTTPError as e:
+            log.warning("Pushover notification failed: %s", e)
     if cfg.webhook_url:
         try:
             r = await http.post(cfg.webhook_url, json={"title": title, "message": body, "items": lines, "url": cfg.public_url})
