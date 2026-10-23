@@ -8,15 +8,15 @@
 #
 #   VERSION=0.1.42 packaging/build-deb.sh
 #
-# Releases are built by CI from a vX.Y.Z tag. Without VERSION, a local build
-# is labelled after the latest tag, e.g. 0.1.34+dev3.g1a2b3c4.
+# Releases are built by CI from an X.Y.Z tag. Without VERSION, a local build
+# is labelled after the latest tag, e.g. 0.1.36+dev3.g1a2b3c4.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ -z "${VERSION:-}" ]; then
-  desc=$(git describe --tags --match 'v[0-9]*' --long 2>/dev/null || echo "v0.0.0-$(git rev-list --count HEAD)-g$(git rev-parse --short HEAD)")
+  desc=$(git describe --tags --match '[0-9]*.[0-9]*.[0-9]*' --long 2>/dev/null || echo "0.0.0-$(git rev-list --count HEAD)-g$(git rev-parse --short HEAD)")
   tag=${desc%-*-g*}; rest=${desc#"$tag"-}
-  VERSION="${tag#v}+dev${rest%%-*}.${rest#*-}"
+  VERSION="$tag+dev${rest%%-*}.${rest#*-}"
 fi
 PYTHONS="3.11 3.12 3.13"
 ARCHES="x86_64 aarch64"

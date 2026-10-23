@@ -1,17 +1,17 @@
 name: Release
 
-# Pushing a vX.Y.Z tag tests that commit, builds lxcwatch_X.Y.Z_all.deb,
+# Pushing an X.Y.Z tag (e.g. 0.1.36) tests that commit, builds lxcwatch_X.Y.Z_all.deb,
 # publishes it to the owner's Debian registry (distribution "stable",
 # component "main") and creates a release with the version's
 # CHANGELOG.md section and the .deb attached. CHANGELOG.md must have a
 # "## X.Y.Z" entry. Run it by hand to (re)release an existing tag.
 on:
   push:
-    tags: ['v*']
+    tags: ['[0-9]*']
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to release, e.g. v0.1.34
+        description: Existing tag to release, e.g. 0.1.36
         required: true
 
 concurrency:
@@ -40,8 +40,8 @@ jobs:
         name: Check the tag and changelog
         working-directory: src
         run: |
-          version=${TAG#v}
-          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Tag $TAG isn't vX.Y.Z"; exit 1; }
+          version=$TAG
+          echo "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Tag $TAG isn't X.Y.Z"; exit 1; }
           grep -Eq "^## $(echo "$version" | sed 's/\./\\./g')( |$)" CHANGELOG.md || {
             echo "CHANGELOG.md has no '## $version' entry; add one before tagging"; exit 1; }
       -
@@ -70,7 +70,7 @@ jobs:
         working-directory: src
         env:
           PIP_BREAK_SYSTEM_PACKAGES: "1"
-        run: VERSION="${TAG#v}" packaging/build-deb.sh | tee /tmp/built
+        run: VERSION="$TAG" packaging/build-deb.sh | tee /tmp/built
       -
         # Needs a PACKAGES_TOKEN secret: a token of the owner with package
         # read/write (the automatic CI token can't publish packages).
@@ -95,7 +95,7 @@ jobs:
           TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
         run: |
-          version=${TAG#v}
+          version=$TAG
           deb="src/$(tail -n1 /tmp/built)"
           # This version's section of the changelog, without its heading.
           awk -v h="## $version" '
@@ -109,7 +109,7 @@ jobs:
           notes = open("/tmp/notes.md").read().strip()
           install = ("\n\n---\n\nInstall or upgrade from the apt repo with `apt update && apt install lxcwatch`, "
                      "or download the .deb below and `apt install ./lxcwatch_" + version + "_all.deb`.")
-          print(json.dumps({"tag_name": tag, "name": "lxcwatch " + version, "body": notes + install}))
+          print(json.dumps({"tag_name": tag, "name": version, "body": notes + install}))
           PY
           auth="Authorization: token $TOKEN"
           code=$(curl -s -o /tmp/existing -w '%{http_code}' -H "$auth" "$API/releases/tags/$TAG")
