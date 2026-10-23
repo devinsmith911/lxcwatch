@@ -73,6 +73,16 @@ input[type=search] { font: inherit; padding: 5px 10px; border: 1px solid var(--b
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .filters button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .toggle { display: inline-flex; gap: 6px; align-items: center; padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); cursor: pointer; user-select: none; }
+.toggle.chip { padding: 3px 9px; border-radius: 999px; font-size: 12px; gap: 5px; }
+.brand { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.brand img { border-radius: 9px; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.iconbtn { min-width: 34px; text-align: center; }
+.scaninfo { font-size: 12px; color: var(--muted); }
+.conn-short { display: none; }
+.only-mobile { display: none !important; }
+.stats { align-items: stretch; }
+.stat { display: flex; flex-direction: column; justify-content: flex-start; }
+.scanbar { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
 .toggle:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
 .toggle input { accent-color: var(--accent); margin: 0; }
 .spacer { flex: 1; }
@@ -91,7 +101,11 @@ input[type=search] { font: inherit; padding: 5px 10px; border: 1px solid var(--b
 .pager .actions { align-items: center; }
 select { font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.stat { background: color-mix(in srgb, var(--c, var(--accent)) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 28%, var(--border)); border-radius: 10px; padding: 10px 14px; min-width: 0; }
+.stat { font: inherit; color: inherit; text-align: left; cursor: pointer; background: color-mix(in srgb, var(--c, var(--accent)) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 28%, var(--border)); border-radius: 10px; padding: 10px 14px; min-width: 0; transition: box-shadow .12s ease, transform .12s ease; }
+.stat:hover { box-shadow: 0 2px 10px color-mix(in srgb, var(--c, var(--accent)) 22%, transparent); }
+.stat.active { box-shadow: 0 0 0 2px var(--c, var(--accent)); }
+.stat .label { display: block; color: var(--muted); font-size: 12px; }
+.stat .sub { display: block; color: var(--muted); font-size: 12px; }
 .stat b { display: block; font-size: 22px; color: var(--c, var(--text)); }
 .stat.zero { background: var(--panel); border-color: var(--border); }
 .stat.zero b { color: var(--muted); }
@@ -146,49 +160,76 @@ a.ext::after { content: " ↗"; font-size: .85em; }
 .rel pre { white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, Menlo, monospace; background: var(--chip); padding: 10px; border-radius: 6px; margin: 6px 0 0; max-height: 360px; overflow: auto; }
 .whatsnew { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 6%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); }
 @media (max-width: 760px) {
-  header, main { padding-left: 16px; padding-right: 16px; }
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .conn .pop { right: auto; left: 0; }
-  input[type=search] { width: 100%; }
+  header, main { padding-left: 12px; padding-right: 12px; }
+  header.hero { padding-top: 10px; padding-bottom: 10px; flex-wrap: nowrap; }
+  header.hero .brand img { width: 28px; height: 28px; border-radius: 7px; }
+  header.hero h1 { font-size: 16px; }
+  header.hero .actions { flex-wrap: nowrap; gap: 6px; }
+  .conn-long { display: none; }
+  .conn-short { display: inline; }
+  .conn summary { padding: 4px 8px; }
+  .conn .pop { right: 0; left: auto; min-width: 240px; }
+  main { padding-top: 10px; }
+  /* Stat boxes: one compact row that scrolls sideways. */
+  .stats { display: flex; overflow-x: auto; gap: 6px; margin: 0 -12px 10px; padding: 0 12px 2px; scrollbar-width: none; }
+  .stats::-webkit-scrollbar { display: none; }
+  .stat { flex: 0 0 auto; flex-direction: row; padding: 5px 10px; border-radius: 8px; align-items: baseline; gap: 6px; }
+  .stat b { font-size: 16px; display: inline; }
+  .stat .label { display: inline; font-size: 12px; white-space: nowrap; }
+  .stat .sub { display: none; }
+  .toolbar { gap: 6px; margin-bottom: 8px; }
+  input[type=search] { width: 100%; order: -1; }
+  .toolbar .spacer { display: none; }
+  .scanbar { flex-basis: 100%; margin-left: 0; }
+  .scaninfo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .scanbar button { padding: 4px 10px; font-size: 13px; }
+  /* Rows as compact cards: name + time, app, packages, actions. */
   thead { display: none; }
-  table, tbody, tr, td { display: block; width: 100%; }
-  tr { border-bottom: 1px solid var(--border); padding: 8px 0; }
-  td { border: 0; padding: 4px 12px; }
-  td[data-label]::before { content: attr(data-label) " "; color: var(--muted); font-size: 12px; }
+  table, tbody { display: block; width: 100%; }
+  tbody tr { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 3px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  tbody tr.empty { display: block; }
+  td { display: block; border: 0; padding: 0; min-width: 0; }
+  tbody tr td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  tbody tr td:nth-child(2) { grid-column: 2; grid-row: 1; }
+  tbody tr td:nth-child(5) { grid-column: 3; grid-row: 1; font-size: 11px; white-space: nowrap; }
+  tbody tr td:nth-child(3) { grid-column: 2 / 4; grid-row: 2; font-size: 13px; }
+  tbody tr td:nth-child(4) { grid-column: 2 / 4; grid-row: 3; }
+  tbody tr td:nth-child(6) { grid-column: 2 / 4; grid-row: 4; padding-top: 3px; }
+  .ctinfo, .tags { display: none; }
+  .only-mobile { display: inline-flex !important; }
+  td:has(> .dash:only-child) { display: none; }
+  .comp { white-space: normal; }
+  td .actions button { padding: 3px 9px; font-size: 12px; }
+  .badge { font-size: 11px; padding: 1px 7px; }
+  .pager { font-size: 12px; }
   .pkgs { columns: 1; }
 }
 </style>
 </head>
 <body>
 <header class="hero">
-  <div style="display:flex;gap:12px;align-items:center">
-    <img src="/icon.svg" alt="" width="36" height="36" style="border-radius:9px;box-shadow:0 0 0 1px rgba(255,255,255,.25)">
-    <div>
+  <div class="brand">
+    <img src="/icon.svg" alt="" width="36" height="36">
     <h1>lxcwatch <span class="muted small" id="version" style="font-weight:400"></span></h1>
-    <div class="muted small" id="scaninfo">Loading…</div>
-    </div>
   </div>
-  <div class="actions" style="align-items:center">
+  <div class="actions">
     <details class="conn" id="conn"><summary><span class="dot"></span><span>Connecting…</span></summary></details>
-    <button id="themebtn" title="Theme"></button>
+    <button id="themebtn" class="iconbtn" title="Theme"></button>
     <button id="logoutbtn" title="Sign out">Sign out</button>
-    <button id="scanbtn" class="primary">Scan now</button>
   </div>
 </header>
 <main>
   <div class="stats" id="stats"></div>
   <div class="toolbar">
-    <div class="filters actions" id="filters">
-      <button data-f="all" class="active">All</button>
-      <button data-f="updates">Needs update</button>
-      <button data-f="security">Security</button>
-      <button data-f="problems">Problems</button>
-    </div>
-    <label class="toggle"><input type="checkbox" id="hidestopped"> Hide stopped</label>
-    <label class="toggle" title="Containers whose app version lxcwatch can't determine: not from community-scripts, never scanned, or no version found"><input type="checkbox" id="hideunknown"> Hide unknown</label>
-    <span class="spacer"></span>
-    <button id="updateall" class="primary">Update all…</button>
     <input type="search" id="q" placeholder="Filter by name, ID, node, tag">
+    <label class="toggle chip"><input type="checkbox" id="hidestopped"> Hide stopped</label>
+    <label class="toggle chip" title="Containers whose app version lxcwatch can't determine: not from community-scripts, never scanned, or no version found"><input type="checkbox" id="hideunknown"> Hide unknown</label>
+    <span class="spacer"></span>
+    <div class="scanbar">
+      <span class="scaninfo" id="scaninfo">Loading…</span>
+      <button id="scanbtn">Scan now</button>
+      <button id="updateall" class="primary">Update all…</button>
+    </div>
   </div>
   <div id="batchbox"></div>
   <table>
@@ -336,7 +377,8 @@ function visible() {
   return state.data.containers.filter(c => {
     if (state.hideStopped && c.status !== "running") return false;
     if (state.hideUnknown && isUnknown(c)) return false;
-    if (state.filter === "updates" && !needsUpdate(c)) return false;
+    if (state.filter === "app" && !c.outdated) return false;
+    if (state.filter === "packages" && !c.pkg_count) return false;
     if (state.filter === "security" && !c.pkg_security) return false;
     if (state.filter === "problems" && !problem(c)) return false;
     if (q && ![c.vmid, c.name, c.node, ...c.tags, c.script].join(" ").toLowerCase().includes(q)) return false;
@@ -345,7 +387,7 @@ function visible() {
 }
 
 function compHtml(c) {
-  if (c.status !== "running" && !c.components.length) return `<span class="muted">—</span>`;
+  if (c.status !== "running" && !c.components.length) return `<span class="muted dash">—</span>`;
   if (!c.script) return `<span class="badge info">not a community-script</span>`;
   const parts = c.components.map(x => {
     const name = esc(x.name);
@@ -367,7 +409,7 @@ function compHtml(c) {
 }
 
 function pkgHtml(c) {
-  if (!c.pkgmgr) return `<span class="muted">—</span>`;
+  if (!c.pkgmgr) return `<span class="muted dash">—</span>`;
   const restart = (c.restart_needed ? ` <span class="badge warn" title="${esc(c.stale_procs.length ? `Still running replaced code: ${c.stale_procs.join(", ")}` : "The container asks for a reboot")}">restart needed</span>` : "")
     + (c.release ? ` <span class="badge info" title="Release upgrade available, see Details">Debian ${c.release.target} available</span>` : "");
   if (!c.pkg_count) return `<span class="badge ok">up to date</span>${restart}`;
@@ -383,9 +425,9 @@ function rowHtml(c) {
   const job = busy ? `<span class="badge warn">updating…</span>` : c.last_job?.status === "failed" ? `<span class="badge bad">last ${esc(KIND_LABEL[c.last_job.kind] || c.last_job.kind)} failed</span>` : "";
   return `<tr class="r-${rowState(c)}${state.selected.has(c.vmid) ? " selected" : ""}">
     <td><input type="checkbox" data-sel="${c.vmid}" ${state.selected.has(c.vmid) ? "checked" : ""} aria-label="Select ${c.vmid}"></td>
-    <td><div class="name"><span class="dot" title="${rowState(c)}"></span>${c.vmid} · ${esc(c.name)}${status}</div>
-        <div class="small"><span class="badge node">${esc(c.node)}</span> <span class="muted">${esc(c.os || "")}</span></div>
-        <div>${c.tags.map(t => `<span class="badge">${esc(t)}</span>`).join("")}</div>${err}</td>
+    <td><div class="name"><span class="dot" title="${rowState(c)}"></span>${c.vmid} · ${esc(c.name)}${status} <span class="badge node only-mobile">${esc(c.node)}</span></div>
+        <div class="small ctinfo"><span class="badge node">${esc(c.node)}</span> <span class="muted">${esc(c.os || "")}</span></div>
+        ${c.tags.length ? `<div class="tags">${c.tags.map(t => `<span class="badge">${esc(t)}</span>`).join("")}</div>` : ""}${err}</td>
     <td data-label="App:">${compHtml(c)}${upErr}</td>
     <td data-label="OS:">${pkgHtml(c)}</td>
     <td data-label="Scanned:" class="small muted">${c.scanning ? "scanning…" : ago(c.scanned_at)}</td>
@@ -410,21 +452,26 @@ function render() {
   if (s.error) $("#scaninfo").innerHTML += ` · <span class="badge bad">${esc(s.error)}</span>`;
   $("#scanbtn").disabled = s.running;
   const running = cs.filter(c => c.status === "running").length;
+  // Each box filters the table; clicking the active one shows everything again.
   const stats = [
-    ["Containers", cs.length, "--accent", `${running} running · ${cs.length - running} stopped`],
-    ["App updates", cs.reduce((n, c) => n + c.outdated, 0), "--warn"],
-    ["With package updates", cs.filter(c => c.pkg_count).length, "--info"],
-    ["Security", cs.reduce((n, c) => n + c.pkg_security, 0), "--bad"],
-    ["Problems", cs.filter(problem).length, "--bad"],
+    ["all", "Containers", cs.length, "--accent", `${running} running · ${cs.length - running} stopped`],
+    ["app", "App updates", cs.filter(c => c.outdated).length, "--warn"],
+    ["packages", "Package updates", cs.filter(c => c.pkg_count).length, "--info"],
+    ["security", "Security", cs.filter(c => c.pkg_security).length, "--bad"],
+    ["problems", "Problems", cs.filter(problem).length, "--bad"],
   ];
-  $("#stats").innerHTML = stats.map(([k, v, color, sub]) => `<div class="stat${v || k === "Containers" ? "" : " zero"}" style="--c: var(${v || k === "Containers" ? color : "--idle"})"><b>${v}</b><span class="muted small">${k}${sub ? `<br>${sub}` : ""}</span></div>`).join("");
+  $("#stats").innerHTML = stats.map(([f, k, v, color, sub]) => {
+    const live = v || f === "all";
+    return `<button class="stat${live ? "" : " zero"}${state.filter === f ? " active" : ""}" data-f="${f}" aria-pressed="${state.filter === f}"
+      style="--c: var(${live ? color : "--idle"})"><b>${v}</b><span class="label">${k}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</button>`;
+  }).join("");
   const rows = visible();
   const size = Number(state.pageSize) || rows.length || 1;
   const pages = Math.max(1, Math.ceil(rows.length / size));
   state.page = Math.min(Math.max(1, state.page), pages);
   const start = (state.page - 1) * size;
   const shown = rows.slice(start, start + size);
-  $("#rows").innerHTML = shown.length ? shown.map(rowHtml).join("") : `<tr><td colspan="6" class="muted">Nothing here.</td></tr>`;
+  $("#rows").innerHTML = shown.length ? shown.map(rowHtml).join("") : `<tr class="empty"><td colspan="6" class="muted">Nothing here.</td></tr>`;
   $("#selall").checked = shown.length > 0 && shown.every(c => state.selected.has(c.vmid));
   $("#pageinfo").textContent = rows.length ? `Showing ${start + 1}–${start + shown.length} of ${rows.length}${rows.length < cs.length ? ` (${cs.length - rows.length} filtered out)` : ""}` : `0 of ${cs.length} containers match`;
   $("#pagenum").textContent = `Page ${state.page} of ${pages}`;
@@ -553,7 +600,8 @@ function renderConn(conn) {
     : conn.ok ? `${where}${conn.cluster ? ` · ${esc(conn.cluster)}` : ""} · ${online}/${conn.nodes.length} node${conn.nodes.length === 1 ? "" : "s"}`
     : `Can't reach ${where}`;
   const dot = conn.ok === null ? "" : conn.ok && online === conn.nodes.length ? "ok" : "bad";
-  const summary = `<span class="dot ${dot}"></span><span>${label}</span>`;
+  const short = conn.ok === null ? "…" : conn.ok ? `${online}/${conn.nodes.length} nodes` : "offline";
+  const summary = `<span class="dot ${dot}"></span><span class="conn-long">${label}</span><span class="conn-short">${short}</span>`;
   const pop = `<div class="pop">
       <div><b>Connected via</b><span>${where}</span></div>
       ${conn.cluster ? `<div><span class="muted">Cluster</span><span>${esc(conn.cluster)}</span></div>` : ""}
@@ -769,9 +817,8 @@ document.addEventListener("click", async ev => {
   const t = ev.target.closest("button, input[type=checkbox], .steps [data-job]");
   if (!t) return;
   if (t.matches("[data-f]")) {
-    state.filter = t.dataset.f;
+    state.filter = state.filter === t.dataset.f ? "all" : t.dataset.f;
     state.page = 1;
-    document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("active", b === t));
     render();
   } else if (t.matches("[data-sel]")) {
     const id = Number(t.dataset.sel);
@@ -854,7 +901,7 @@ $("#pagesize").value = String(state.pageSize);
 $("#pagesize").addEventListener("change", e => { state.pageSize = Number(e.target.value); store("pageSize", state.pageSize); state.page = 1; render(); });
 $("#prev").addEventListener("click", () => { state.page--; render(); scrollTo({ top: 0, behavior: "smooth" }); });
 $("#next").addEventListener("click", () => { state.page++; render(); scrollTo({ top: 0, behavior: "smooth" }); });
-const THEMES = { system: "◐ System", light: "☀ Light", dark: "☾ Dark" };
+const THEMES = { system: "◐", light: "☀", dark: "☾" };
 function applyTheme(t) {
   if (t === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
