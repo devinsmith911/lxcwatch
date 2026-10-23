@@ -169,9 +169,10 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   .conn-short { display: inline; }
   .conn summary { padding: 4px 8px; }
   .conn .pop { right: 0; left: auto; min-width: 240px; }
-  main { padding-top: 10px; }
+  main { padding-top: 6px; }
   /* Stat boxes: one compact row that scrolls sideways. */
-  .stats { display: flex; overflow-x: auto; gap: 6px; margin: 0 -12px 10px; padding: 0 12px 2px; scrollbar-width: none; }
+  /* Scrolling clips overflow on both axes, so leave room for the active ring. */
+  .stats { display: flex; overflow-x: auto; gap: 6px; margin: 0 -12px 6px; padding: 4px 12px; scrollbar-width: none; }
   .stats::-webkit-scrollbar { display: none; }
   .stat { flex: 0 0 auto; flex-direction: row; padding: 5px 10px; border-radius: 8px; align-items: baseline; gap: 6px; }
   .stat b { font-size: 16px; display: inline; }
@@ -822,6 +823,12 @@ document.addEventListener("click", async ev => {
     state.filter = state.filter === t.dataset.f ? "all" : t.dataset.f;
     state.page = 1;
     render();
+    // On mobile the boxes scroll sideways: bring the selected one into view
+    // (scrollLeft only, so the page itself doesn't jump).
+    const strip = $("#stats"), active = strip.querySelector(".stat.active");
+    if (active && (active.offsetLeft < strip.scrollLeft || active.offsetLeft + active.offsetWidth > strip.scrollLeft + strip.clientWidth)) {
+      strip.scrollTo({ left: active.offsetLeft - 12, behavior: "smooth" });
+    }
   } else if (t.matches("[data-sel]")) {
     const id = Number(t.dataset.sel);
     t.checked ? state.selected.add(id) : state.selected.delete(id);
