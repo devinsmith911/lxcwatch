@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.0 (2026-10-23)
+
+First stable release. It's the same code as 0.1.36; from here, version numbers follow the usual major.minor.patch meaning.
+
 ## 0.1.36 (2026-10-23)
 
 ### Added
