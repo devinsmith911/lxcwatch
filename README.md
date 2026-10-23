@@ -56,7 +56,7 @@ Nothing updates automatically. Updates only run when you click one of the update
 
 `/opt/lxcwatch/venv` belongs to the package and is rebuilt on every install or upgrade, so don't edit or delete it. If it goes missing, run `dpkg-reconfigure lxcwatch` to rebuild it.
 
-**Upgrading:** `apt update && apt upgrade`. Every push to `main` publishes a new version (`0.1.<commit count>`), so lxcwatch shows its own update under Packages too. Your config, key and database are kept. `apt purge lxcwatch` removes all of them.
+**Upgrading:** `apt update && apt upgrade`. Each release publishes a new version, so lxcwatch shows its own update under Packages too. Your config, key and database are kept. `apt purge lxcwatch` removes all of them.
 
 **Moving from a source install** (`deploy/install.sh`): just install the package as above. It takes over the existing user, key, config and database, and removes the old service file and `/opt/lxcwatch/src`.
 
@@ -105,11 +105,19 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 
 ## Development
 
-User-facing changes go in [CHANGELOG.md](CHANGELOG.md) under the version the push will publish (`0.1.<commit count>` including that commit). The package installs it as `/usr/share/doc/lxcwatch/CHANGELOG.md`.
+Pushes to `main` only run the tests. To release:
+
+1. Add a `## X.Y.Z (date)` entry at the top of [CHANGELOG.md](CHANGELOG.md) and commit it to `main`.
+2. Tag that commit and push the tag:
+   ```sh
+   git tag vX.Y.Z && git push origin vX.Y.Z
+   ```
+
+CI then tests the tagged commit, builds `lxcwatch_X.Y.Z_all.deb` and publishes it. It refuses tags that aren't `vX.Y.Z`, tags without a changelog entry, and versions that are already published. The package installs the changelog as `/usr/share/doc/lxcwatch/CHANGELOG.md`.
 
 ```sh
 uv venv && uv pip install -e '.[dev]'
 .venv/bin/pytest            # the probe also runs against real Debian/Alpine images when Docker is available
-packaging/build-deb.sh      # builds dist/lxcwatch_<version>_all.deb (needs dpkg-deb; CI uses debian:13)
+packaging/build-deb.sh      # builds dist/lxcwatch_<latest tag>+dev<n>.<sha>_all.deb (needs dpkg-deb; CI uses debian:13)
 LXCWATCH_PVE_HOST=pve1 LXCWATCH_PASSWORD=dev .venv/bin/uvicorn lxcwatch.app:app --reload
 ```

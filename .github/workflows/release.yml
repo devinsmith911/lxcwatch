@@ -1,18 +1,14 @@
-name: Test and publish package
+name: Release
 
-# Every push to main publishes lxcwatch_<base>.<commit count>_all.deb to this
-# owner's Debian registry (distribution "stable", component "main").
+# Pushing a vX.Y.Z tag tests that commit, builds lxcwatch_X.Y.Z_all.deb and
+# publishes it to the owner's Debian registry (distribution "stable",
+# component "main"). CHANGELOG.md must have a "## X.Y.Z" entry.
 on:
   push:
-    branches: [main]
-    paths:
-      - '**'
-      - '!**.md'
-  workflow_dispatch:
+    tags: ['v*']
 
-# Runs queue rather than cancel, so versions publish in order.
 concurrency:
-  group: package
+  group: release
   cancel-in-progress: false
 
 env:
@@ -26,13 +22,22 @@ jobs:
       image: debian:13
     steps:
       -
-        # Plain git instead of actions/checkout: the debian image has no node.
         name: Check out
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends git ca-certificates python3-venv >/dev/null
           git clone -q "$REPO_URL" src
           git -C src checkout -q "${{ github.sha }}"
+      -
+        name: Check the tag and changelog
+        working-directory: src
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=${TAG#v}
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Tag $TAG isn't vX.Y.Z"; exit 1; }
+          grep -Eq "^## $(echo "$version" | sed 's/\./\\./g')( |$)" CHANGELOG.md || {
+            echo "CHANGELOG.md has no '## $version' entry; add one before tagging"; exit 1; }
       -
         name: Test
         working-directory: src
@@ -48,7 +53,6 @@ jobs:
       image: debian:13
     steps:
       -
-        # Full history: the version's last part is the commit count.
         name: Check out
         run: |
           apt-get update -qq
@@ -60,7 +64,8 @@ jobs:
         working-directory: src
         env:
           PIP_BREAK_SYSTEM_PACKAGES: "1"
-        run: packaging/build-deb.sh | tee /tmp/built
+          TAG: ${{ github.ref_name }}
+        run: VERSION="${TAG#v}" packaging/build-deb.sh | tee /tmp/built
       -
         # Needs a PACKAGES_TOKEN secret: a token of the owner with package
         # read/write (the automatic CI token can't publish packages).
@@ -74,6 +79,6 @@ jobs:
             --upload-file "$deb" "$PACKAGES_URL/pool/stable/main/upload")
           case "$code" in
             201) echo "Published $(basename "$deb")" ;;
-            409) echo "$(basename "$deb") is already published" ;;
+            409) echo "$(basename "$deb") is already published"; exit 1 ;;
             *) echo "Upload failed ($code): $(cat /tmp/response)"; exit 1 ;;
           esac

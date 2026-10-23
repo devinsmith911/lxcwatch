@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.34 (2026-10-23)
+
+### Changed
+- Releases are now cut from version tags (`vX.Y.Z`) instead of every push to `main`, so new versions arrive only when deliberately released. lxcwatch itself is unchanged.
+
 ## 0.1.33 (2026-10-23)
 
 ### Added
