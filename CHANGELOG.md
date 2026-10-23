@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.35 (2026-10-23)
+
+### Changed
+- Each version now appears under the repository's **Releases** in the self-hosted git server, with its changelog notes and the `.deb` attached for download.
+
 ## 0.1.34 (2026-10-23)
 
 ### Changed

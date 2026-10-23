@@ -113,7 +113,7 @@ Pushes to `main` only run the tests. To release:
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
 
-CI then tests the tagged commit, builds `lxcwatch_X.Y.Z_all.deb` and publishes it. It refuses tags that aren't `vX.Y.Z`, tags without a changelog entry, and versions that are already published. The package installs the changelog as `/usr/share/doc/lxcwatch/CHANGELOG.md`.
+CI then tests the tagged commit, builds `lxcwatch_X.Y.Z_all.deb`, publishes it to the apt repo, and creates a release with that version's changelog section and the `.deb` attached. To (re)create the release for an existing tag, run the **Release** workflow by hand (Actions → Release → Run workflow) with the tag name. It refuses tags that aren't `vX.Y.Z`, tags without a changelog entry, and versions that are already published. The package installs the changelog as `/usr/share/doc/lxcwatch/CHANGELOG.md`.
 
 ```sh
 uv venv && uv pip install -e '.[dev]'
