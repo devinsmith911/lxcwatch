@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.32 (2026-10-23)
+
+### Changed
+- The scan info next to **Scan now** shows only the last and next scan time. The container count and scan duration were dropped; on mobile they were always cut off.
+
 ## 0.1.30 (2026-10-23)
 
 ### Changed

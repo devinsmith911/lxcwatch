@@ -451,7 +451,7 @@ function render() {
   $("#version").textContent = d.version && d.version !== "dev" ? `v${d.version}` : "";
   renderBatch(d.batch);
   const next = s.next_at ? ` · next ${until(s.next_at)}` : s.interval_minutes > 0 ? "" : " · scheduled scans off";
-  $("#scaninfo").textContent = s.running ? "Scanning…" : `${s.last ? `Last scan ${ago(s.last.at)} · ${s.last.count} containers in ${s.last.took}s` : "Not scanned yet"}${next}`;
+  $("#scaninfo").textContent = s.running ? "Scanning…" : `${s.last ? `Last scan ${ago(s.last.at)}` : "Not scanned yet"}${next}`;
   if (s.error) $("#scaninfo").innerHTML += ` · <span class="badge bad">${esc(s.error)}</span>`;
   $("#scanbtn").disabled = s.running;
   const running = cs.filter(c => c.status === "running").length;
