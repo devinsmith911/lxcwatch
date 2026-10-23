@@ -105,6 +105,8 @@ All configuration comes from environment variables. See [.env.example](.env.exam
 
 ## Development
 
+User-facing changes go in [CHANGELOG.md](CHANGELOG.md) under the version the push will publish (`0.1.<commit count>` including that commit). The package installs it as `/usr/share/doc/lxcwatch/CHANGELOG.md`.
+
 ```sh
 uv venv && uv pip install -e '.[dev]'
 .venv/bin/pytest            # the probe also runs against real Debian/Alpine images when Docker is available

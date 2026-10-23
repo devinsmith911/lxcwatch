@@ -42,6 +42,7 @@ done
 install -Dm644 deploy/lxcwatch.service "$root/lib/systemd/system/lxcwatch.service"
 install -Dm644 .env.example "$root/usr/share/lxcwatch/lxcwatch.env.example"
 install -Dm644 README.md "$root/usr/share/doc/lxcwatch/README.md"
+install -Dm644 CHANGELOG.md "$root/usr/share/doc/lxcwatch/CHANGELOG.md"
 
 mkdir -p "$root/DEBIAN"
 for f in postinst prerm postrm; do
