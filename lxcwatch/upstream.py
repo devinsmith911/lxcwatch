@@ -11,6 +11,7 @@ We read those, resolve simple variable assignments for pins, and ask the
 forge for its latest release.
 """
 
+import contextvars
 import re
 import shlex
 import time
@@ -20,6 +21,20 @@ from urllib.parse import quote
 import httpx
 
 from .config import Config
+
+# Set while a manual scan runs: cache entries older than this count as
+# missing, so each repo/script is fetched fresh once per scan (and shared by
+# every container in it). Scheduled scans leave it unset and use the cache.
+FRESH_SINCE: contextvars.ContextVar[float | None] = contextvars.ContextVar("fresh_since", default=None)
+
+
+def version_tuple(version: str | None) -> tuple[int, ...] | None:
+    """(1, 2, 3) for "1.2.3" or "1.2.3+dev4.gabc"; None if it isn't X.Y.Z."""
+    core = (version or "").split("+", 1)[0].lstrip("vV")
+    parts = core.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        return None
+    return tuple(int(p) for p in parts)
 
 CHECK_RE = re.compile(r"\bcheck_for_(gh|codeberg|gl)_release\b(.*)")
 ASSIGN_RE = re.compile(r"""^\s*(?:export\s+|local\s+|readonly\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"$`]*"|'[^']*'|[^\s;#"'$`]+)\s*(?:#.*)?$""")
@@ -226,7 +241,8 @@ class Upstream:
 
     def _get(self, key: tuple, ttl: float):
         hit = self._cache.get(key)
-        if hit and time.time() - hit[0] < ttl:
+        since = FRESH_SINCE.get()
+        if hit and time.time() - hit[0] < ttl and (since is None or hit[0] >= since):
             return True, hit[1]
         return False, None
 
@@ -311,6 +327,23 @@ class Upstream:
             out.append({"tag": tag, "name": rel.get("name") or tag, "url": url, "published": published,
                         "notes": body[:6000], "notes_truncated": len(body) > 6000})
         return self._put(key, out)
+
+    async def lxcwatch_latest(self) -> dict | None:
+        """lxcwatch's own latest release: {"version", "url"} (cached 6 hours)."""
+        if not self.cfg.releases_url:
+            return None
+        key = ("lxcwatch",)
+        hit, value = self._get(key, 6 * 3600)
+        if hit:
+            return value
+        try:
+            r = await self.http.get(self.cfg.releases_url, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            value = {"version": (data.get("tag_name") or "").lstrip("vV"), "url": data.get("html_url")}
+        except (httpx.HTTPError, ValueError):
+            return None  # try again next scan rather than caching a failure
+        return self._put(key, value)
 
     async def script_state(self, slug: str) -> dict | None:
         """Whether community-scripts still maintains this script (e.g. 'deleted')."""

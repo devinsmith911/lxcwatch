@@ -79,6 +79,14 @@ input[type=search] { font: inherit; padding: 5px 10px; border: 1px solid var(--b
 .iconbtn { min-width: 34px; text-align: center; }
 .scaninfo { font-size: 12px; color: var(--muted); }
 .conn-short { display: none; }
+.selfupdate { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: rgba(255,255,255,.95); color: #3b2fc9; text-decoration: none; white-space: nowrap; }
+.selfupdate:hover { text-decoration: none; background: #fff; }
+.selfupdate .lbl-short { display: none; }
+.activity .row { display: grid; grid-template-columns: 9.5em minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.activity .row:last-child { border-bottom: 0; }
+.activity .what { min-width: 0; }
+.activity .what a { color: var(--text); font-weight: 600; cursor: pointer; }
+.activity .meta { color: var(--muted); font-size: 12px; }
 .only-mobile { display: none !important; }
 .stats { align-items: stretch; }
 .stat { display: flex; flex-direction: column; justify-content: flex-start; }
@@ -167,6 +175,15 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   header.hero { padding-top: 10px; padding-bottom: 10px; flex-wrap: nowrap; }
   header.hero .brand img { width: 28px; height: 28px; border-radius: 7px; }
   header.hero h1 { font-size: 16px; }
+  /* Narrow header: logo, update badge, status dot, then the buttons. */
+  header.hero h1 { display: none; }
+  .conn-short { display: none !important; }
+  .conn summary { padding: 6px 8px; }
+  .selfupdate { font-size: 11px; padding: 1px 7px; }
+  .selfupdate .lbl-long { display: none; }
+  .selfupdate .lbl-short { display: inline; }
+  .activity .row { grid-template-columns: minmax(0, 1fr) auto; }
+  .activity .when { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
   header.hero .actions { flex-wrap: nowrap; gap: 6px; }
   .conn-long { display: none; }
   .conn-short { display: inline; }
@@ -215,9 +232,11 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   <div class="brand">
     <img src="/icon.svg" alt="" width="36" height="36">
     <h1>lxcwatch <span class="muted small" id="version" style="font-weight:400"></span></h1>
+    <a id="selfupdate" class="selfupdate" target="_blank" rel="noopener" hidden></a>
   </div>
   <div class="actions">
     <details class="conn" id="conn"><summary><span class="dot"></span><span>Connecting…</span></summary></details>
+    <button id="activitybtn" title="Recent jobs across all containers">Activity</button>
     <button id="themebtn" class="iconbtn" title="Theme"></button>
     <button id="logoutbtn" title="Sign out">Sign out</button>
   </div>
@@ -370,7 +389,7 @@ async function api(path, opts = {}) {
 function duration(s) {
   s = Math.max(0, Math.floor(s));
   const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
-  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : m ? `${m}m` : `${s}s`;
 }
 
 // When the container last started, and whether the last job did that.
@@ -523,6 +542,14 @@ function render() {
   $("#bulk").classList.toggle("show", n > 0);
   $("#bulkcount").textContent = `${n} selected`;
   if (state.drawer?.type === "ct") renderDetails(false);
+  if (state.drawer?.type === "activity") loadActivity();
+  const su = d.self_update, el = $("#selfupdate");
+  el.hidden = !su;
+  if (su) {
+    el.innerHTML = `<span class="lbl-long">${esc(su.version)} available</span><span class="lbl-short">↑ ${esc(su.version)}</span>`;
+    el.title = `lxcwatch ${su.version} is out (you have ${su.current}). Upgrade with apt update && apt upgrade.`;
+    if (su.url) el.href = su.url; else el.removeAttribute("href");
+  }
 }
 
 // ---- Update all ----
@@ -666,6 +693,49 @@ async function openSnapshot(vmid) {
     dlg.returnValue = "";
     dlg.showModal();
   }
+}
+
+// ---- Activity: recent jobs across all containers ----
+const JOB_FILTERS = { all: "All", running: "Running", success: "Succeeded", failed: "Failed" };
+
+function openActivity() {
+  if (state.es) { state.es.close(); state.es = null; }
+  state.drawer = { type: "activity", filter: state.activityFilter || "all", jobs: null };
+  openDrawer("Activity", "Recent jobs across all containers");
+  renderActivity();
+  loadActivity();
+}
+
+async function loadActivity() {
+  const dr = state.drawer;
+  try { dr.jobs = await api("/api/jobs?limit=200"); dr.error = null; }
+  catch (e) { dr.error = e.message; }
+  if (state.drawer === dr) renderActivity();
+}
+
+function renderActivity() {
+  const dr = state.drawer, names = Object.fromEntries((state.data?.containers || []).map(c => [c.vmid, c.name]));
+  const all = dr.jobs || [];
+  const match = j => dr.filter === "all" || (dr.filter === "running" ? ["queued", "running"].includes(j.status) : j.status === dr.filter);
+  const count = f => f === "all" ? all.length : all.filter(j => f === "running" ? ["queued", "running"].includes(j.status) : j.status === f).length;
+  const rows = all.filter(match);
+  const chips = Object.entries(JOB_FILTERS).map(([f, label]) =>
+    `<label class="toggle chip"><input type="radio" name="jobfilter" data-jobfilter="${f}" ${dr.filter === f ? "checked" : ""}> ${label} <span class="muted">${count(f)}</span></label>`).join("");
+  const now = Date.now() / 1000;
+  const list = rows.map(j => {
+    const ended = j.finished_at || (["queued", "running"].includes(j.status) ? now : null);
+    const status = j.status === "success" ? "ok" : j.status === "failed" ? "bad" : "warn";
+    return `<div class="row">
+      <span class="when">${new Date(j.created_at * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
+      <span class="what"><a data-ctlink="${j.vmid}">${j.vmid} · ${esc(names[j.vmid] || "(removed)")}</a>
+        <span class="meta"> · ${esc(KIND_LABEL[j.kind] || j.kind)}${ended ? ` · ${duration(ended - j.created_at)}` : ""}</span></span>
+      <span class="actions"><span class="badge ${status}">${esc(j.status)}${j.rc != null && j.rc !== 0 ? ` (${j.rc})` : ""}</span><button data-joblog="${esc(j.id)}" data-jobvmid="${j.vmid}">Log</button></span>
+    </div>`;
+  }).join("");
+  $("#dbody").innerHTML = `<div class="actions" style="margin-bottom:10px">${chips}</div>
+    ${dr.error ? `<p class="err">${esc(dr.error)}</p>` : !dr.jobs ? `<p class="muted">Loading…</p>`
+      : rows.length ? `<div class="list activity">${list}</div><p class="muted small">Showing the latest ${all.length} jobs.</p>`
+      : `<p class="muted">No ${dr.filter === "all" ? "" : JOB_FILTERS[dr.filter].toLowerCase() + " "}jobs yet.</p>`}`;
 }
 
 function renderConn(conn) {
@@ -864,12 +934,12 @@ async function loadNotes(key) {
   if (state.drawer === dr) renderDetails(false);
 }
 
-function openJob(id, vmid) {
+function openJob(id, vmid, from = "ct") {
   if (state.es) state.es.close();
   state.drawer = { type: "job", id, vmid };
   const c = state.data?.containers.find(x => x.vmid === vmid);
   openDrawer(`Job log${c ? ` · ${c.vmid} ${c.name}` : ""}`, id);
-  $("#dbody").innerHTML = `<div class="actions" style="margin-bottom:10px"><span id="jstatus" class="badge warn">connecting…</span>${vmid ? `<button data-back="${vmid}">Back to container</button>` : ""}</div><pre class="log" id="jlog"></pre>`;
+  $("#dbody").innerHTML = `<div class="actions" style="margin-bottom:10px"><span id="jstatus" class="badge warn">connecting…</span>${from === "activity" ? `<button data-backactivity="1">Back to activity</button>` : vmid ? `<button data-back="${vmid}">Back to container</button>` : ""}</div><pre class="log" id="jlog"></pre>`;
   const pre = $("#jlog");
   const es = new EventSource(`/api/jobs/${encodeURIComponent(id)}/stream`);
   state.es = es;
@@ -892,7 +962,7 @@ function openJob(id, vmid) {
 }
 
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("button, input[type=checkbox], .steps [data-job]");
+  const t = ev.target.closest("button, input[type=checkbox], input[type=radio], .steps [data-job], a[data-ctlink]");
   if (!t) return;
   if (t.matches("[data-f]")) {
     state.filter = state.filter === t.dataset.f ? "all" : t.dataset.f;
@@ -933,6 +1003,16 @@ document.addEventListener("click", async ev => {
     openJob(t.dataset.job, t.dataset.jobvmid ? Number(t.dataset.jobvmid) : state.drawer?.vmid);
   } else if (t.dataset.notes) {
     loadNotes(t.dataset.notes);
+  } else if (t.id === "activitybtn") {
+    openActivity();
+  } else if (t.dataset.jobfilter) {
+    state.drawer.filter = state.activityFilter = t.dataset.jobfilter; renderActivity();
+  } else if (t.dataset.joblog) {
+    openJob(t.dataset.joblog, Number(t.dataset.jobvmid), "activity");
+  } else if (t.dataset.ctlink) {
+    openDetails(Number(t.dataset.ctlink));
+  } else if (t.dataset.backactivity) {
+    openActivity();
   } else if (t.dataset.back) {
     openDetails(Number(t.dataset.back));
   } else if (t.dataset.rescan) {

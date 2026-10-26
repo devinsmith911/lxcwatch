@@ -45,6 +45,7 @@ class Config:
     ntfy_url: str | None
     ntfy_token: str | None
     pushover_token: str | None
+    releases_url: str | None  # lxcwatch's own latest release; None disables the check
     pushover_user: str | None
     webhook_url: str | None
     notify_packages: str  # none | security | all
@@ -90,6 +91,8 @@ def load() -> Config:
         ntfy_url=_env("NTFY_URL"),
         ntfy_token=_env("NTFY_TOKEN"),
         pushover_token=pushover_token,
+        releases_url=None if not _bool("UPDATE_CHECK", True) else _env(
+            "RELEASES_URL", "https://api.github.com/repos/devinsmith911/lxcwatch/releases/latest"),
         pushover_user=pushover_user,
         webhook_url=_env("WEBHOOK_URL"),
         notify_packages=notify_packages,

@@ -1,6 +1,7 @@
 """Tell someone when a scan finds something new to update."""
 
 import hashlib
+import json
 import logging
 
 import httpx
@@ -31,6 +32,12 @@ def collect(cfg: Config, db: DB) -> tuple[list[dict], list[str]]:
     """Return (items, dedupe keys) for updates not yet notified."""
     lines: list[dict] = []
     keys: list[str] = []
+    # lxcwatch's own updates are announced whatever NOTIFY_PACKAGES says.
+    own = json.loads(db.get("self_update") or "null")
+    if own and not db.was_notified(f"self:{own['version']}"):
+        lines.append({"text": f"lxcwatch {own['version']} is available (you have {own['current']})",
+                      "url": own.get("url"), "vmid": None})
+        keys.append(f"self:{own['version']}")
     for ct in db.containers():
         info = ct["info"]
         if not info:

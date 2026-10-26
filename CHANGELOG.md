@@ -3,7 +3,12 @@
 ## Unreleased
 
 ### Added
+- **lxcwatch tells you when it has an update.** A badge in the header (e.g. **1.1.0 available**) links to the release notes, and ntfy, Pushover or the webhook get one notification per new version, whatever `LXCWATCH_NOTIFY_PACKAGES` is set to. Turn it off with `LXCWATCH_UPDATE_CHECK=false`.
+- **Activity:** the new **Activity** button lists recent jobs across all containers: when, which container, what kind, the result and how long it took. Filter by running, succeeded or failed, and open any job's log.
 - **Manual snapshots:** **Take snapshot…** in a container's Details panel snapshots it at any time, running or stopped, whether or not updates are pending. Choose a name (prefilled as `manual-<date>-<time>`) and an optional description. Manual snapshots are never removed by the automatic cleanup after updates.
+
+### Changed
+- **Scan now** and **Rescan** fetch fresh release information and scripts instead of using cached data up to 3 hours old, so a release that just came out shows up right away. Scheduled scans still use the cache to stay within GitHub's rate limit.
 
 ## 1.0.0 (2026-10-23)
 

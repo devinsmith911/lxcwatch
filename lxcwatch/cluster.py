@@ -12,7 +12,8 @@ from .db import DB
 from .probe import parse_probe, probe_script
 from .release import debian_stable, release_info
 from .ssh import SSH
-from .upstream import Upstream, build_components, parse_checks
+from . import __version__
+from .upstream import FRESH_SINCE, Upstream, build_components, parse_checks, version_tuple
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +82,24 @@ class Cluster:
         self.db.forget_missing({int(ct["vmid"]) for ct in cts})
         return cts
 
-    async def scan_all(self) -> None:
+    async def scan_all(self, fresh: bool = False) -> None:
+        """Scan everything; fresh=True (manual scans) refetches upstream data once."""
+        token = FRESH_SINCE.set(time.time()) if fresh else None
+        try:
+            await self._scan_all()
+        finally:
+            if token:
+                FRESH_SINCE.reset(token)
+        await self.check_self_update()
+
+    async def check_self_update(self) -> None:
+        """Record whether a newer lxcwatch release exists (for the header and notifications)."""
+        latest = await self.upstream.lxcwatch_latest()
+        mine, theirs = version_tuple(__version__), version_tuple((latest or {}).get("version"))
+        newer = bool(mine and theirs and theirs > mine)
+        self.db.set("self_update", json.dumps({"current": __version__, **latest} if newer else None))
+
+    async def _scan_all(self) -> None:
         async with self.scan_lock:
             started = time.time()
             try:
@@ -101,7 +119,15 @@ class Cluster:
             await asyncio.gather(*(one(ct) for ct in cts))
             self.db.set("last_scan", json.dumps({"at": time.time(), "took": round(time.time() - started, 1), "count": len(cts)}))
 
-    async def scan_one(self, vmid: int, rediscover: bool = True) -> None:
+    async def scan_one(self, vmid: int, rediscover: bool = True, fresh: bool = False) -> None:
+        token = FRESH_SINCE.set(time.time()) if fresh and FRESH_SINCE.get() is None else None
+        try:
+            await self._scan_one(vmid, rediscover)
+        finally:
+            if token:
+                FRESH_SINCE.reset(token)
+
+    async def _scan_one(self, vmid: int, rediscover: bool) -> None:
         if rediscover:
             try:
                 await self.discover()

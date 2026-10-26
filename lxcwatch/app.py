@@ -36,8 +36,8 @@ batches = Batches(db, jobs)
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 
-async def full_scan() -> None:
-    await cluster.scan_all()
+async def full_scan(fresh: bool = False) -> None:
+    await cluster.scan_all(fresh)
     await notify.send(cfg, db, upstream.http)
 
 
@@ -266,6 +266,7 @@ async def containers():
             "next_at": next_scan_at(),
         },
         "batch": batches.current,
+        "self_update": json.loads(db.get("self_update") or "null"),
         "version": __version__,
         "connection": {
             "host": cfg.pve_host,
@@ -282,13 +283,13 @@ async def containers():
 @app.post("/api/scan", status_code=202)
 async def scan():
     if not cluster.scan_lock.locked():
-        jobs._spawn(full_scan())
+        jobs._spawn(full_scan(fresh=True))  # manual: fetch fresh release data
     return {"started": True}
 
 
 @app.post("/api/containers/{vmid}/scan")
 async def scan_one(vmid: int):
-    await cluster.scan_one(vmid)
+    await cluster.scan_one(vmid, fresh=True)
     ct = db.container(vmid)
     if not ct:
         raise HTTPException(404, "container not found")

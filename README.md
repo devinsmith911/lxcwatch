@@ -80,6 +80,7 @@ lxcwatch reads its settings from environment variables, which the package keeps 
 | `LXCWATCH_WEBHOOK_URL` | — | Receives a JSON POST: `{title, message, items: [{text, url, vmid}], url}` |
 | `LXCWATCH_NOTIFY_PACKAGES` | `security` | `none`, `security` or `all` |
 | `LXCWATCH_PUBLIC_URL` | — | lxcwatch's address, linked from ntfy and Pushover notifications |
+| `LXCWATCH_UPDATE_CHECK` | `true` | Check for new lxcwatch releases: shows a badge in the header and sends one notification per new version |
 
 A GitHub token only needs public read access: a fine-grained token with no extra permissions works.
 
@@ -91,6 +92,8 @@ A GitHub token only needs public read access: a fine-grained token with no extra
 - **Restarts:** containers share the host's kernel, so package updates never need a reboot for a new kernel. Services do keep running the old libraries until they restart, and lxcwatch shows **restart needed** when that's the case. Package updates can restart the container afterwards: only if needed (the default), always, or never.
 - **Debian release upgrades** run one major version at a time from a container's Details panel, never as part of Update all. Before starting, lxcwatch checks disk space, held packages, third-party repositories and whether your Proxmox host supports the new version. Only the official Debian sources are switched; third-party repositories stay on the old release. A snapshot is ticked by default; if an upgrade fails part-way, roll back to it.
 - **Apps installed from apt repositories** (Jellyfin, Pi-hole, AdGuard and similar) have no separate app version; their updates show up under Packages.
+- **Fresh data:** scheduled scans cache release information and scripts for a few hours to stay within GitHub's rate limit. **Scan now** and a container's **Rescan** always fetch fresh data, once per repository per scan.
+- **Activity** in the header lists recent jobs across all containers, with their results and logs.
 - **"Untracked"** means lxcwatch found a version file that the app's script doesn't refer to. **"Unknown"** means the installed or available version couldn't be determined.
 
 ## How it works
