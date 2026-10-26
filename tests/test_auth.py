@@ -116,3 +116,24 @@ def test_failure_superseded_by_later_success(client):
     db.update_job("j1", status="success", finished_at=3000)
     [ct] = app_module.db.containers()
     assert app_module._summary(ct)["failures"][0]["superseded"] is True  # lxcwatch update succeeded later
+
+
+def test_manual_snapshot_api(client, monkeypatch):
+    import lxcwatch.app as app_module
+    started = []
+    monkeypatch.setattr(app_module.jobs, "_spawn", lambda coro: (started.append(coro), coro.close()))
+    db = app_module.db
+    db.upsert_seen(120, "pve1", "stopped-ct", "stopped", "")
+    auth = {"Authorization": "Basic " + base64.b64encode(b"admin:s3cret").decode(), **H}
+    post = lambda body: client.post("/api/containers/120/snapshots", json=body, headers=auth)
+    r = post({"name": "manual-1", "description": "test"})
+    assert r.status_code == 200 and len(started) == 1  # stopped containers can be snapshotted too
+    job = db.job(r.json()["job"])
+    assert job["kind"] == "snapshot" and job["snapshot"] == "manual-1"
+    app_module.jobs.active.clear()
+    assert post({"name": "lxcwatch-mine"}).status_code == 409  # reserved for automatic snapshots
+    assert post({"name": "9bad"}).status_code == 409
+    assert post({"name": "x" * 41}).status_code == 409
+    assert post({"name": "ok", "description": "d" * 201}).status_code == 409
+    assert post({"name": "manual-2"}).status_code == 200
+    assert post({"name": "manual-3"}).status_code == 409  # a job is already running on it

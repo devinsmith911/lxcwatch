@@ -86,6 +86,9 @@ input[type=search] { font: inherit; padding: 5px 10px; border: 1px solid var(--b
 .toggle:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
 .toggle input { accent-color: var(--accent); margin: 0; }
 .spacer { flex: 1; }
+input.field { font: inherit; width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); margin-top: 4px; }
+.sectionhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 18px 0 8px; }
+.sectionhead h3 { margin: 0; }
 .batch { background: var(--panel); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
 .batch .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .bar { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; margin: 10px 0; }
@@ -285,6 +288,23 @@ a.ext::after { content: " ↗"; font-size: .85em; }
     <div class="actions" style="justify-content:flex-end">
       <button value="cancel">Cancel</button>
       <button value="ok" class="primary" id="allgo">Start</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="snapdlg">
+  <form method="dialog">
+    <h3 style="margin-top:0" id="snaptitle">Take a snapshot</h3>
+    <p><label class="small" for="snapname"><b>Name</b></label><br>
+      <input id="snapname" class="field" maxlength="40" autocomplete="off" spellcheck="false"></p>
+    <p><label class="small" for="snapdesc"><b>Description</b> <span class="muted">(optional)</span></label><br>
+      <input id="snapdesc" class="field" maxlength="200" placeholder="e.g. before changing the config"></p>
+    <p class="muted small">Starts with a letter; letters, digits, - and _ only. Manual snapshots are never removed automatically. Delete them here when you no longer need them.</p>
+    <p class="err small" id="snaperr"></p>
+    <!-- Primary button first so Enter takes the snapshot; row-reverse keeps it on the right. -->
+    <div class="actions" style="flex-direction:row-reverse;justify-content:flex-start">
+      <button value="ok" class="primary" id="snapgo">Take snapshot</button>
+      <button value="cancel">Cancel</button>
     </div>
   </form>
 </dialog>
@@ -561,7 +581,7 @@ async function openUpdateAll() {
   } catch (e) { alert(e.message); }
 }
 
-const KIND_LABEL = { app: "app update", os: "package update", release: "release upgrade", restart: "restart", rollback: "rollback" };
+const KIND_LABEL = { app: "app update", os: "package update", release: "release upgrade", restart: "restart", rollback: "rollback", snapshot: "snapshot" };
 const STEP_BADGE = { pending: "", running: "warn", success: "ok", failed: "bad", skipped: "info" };
 const STEP_ICON = { pending: "○", running: "◐", success: "✓", failed: "✗", skipped: "–" };
 
@@ -611,6 +631,41 @@ async function openReleaseUpgrade(vmid) {
     openJob(r.job, vmid);
     refresh();
   } catch (e) { alert(e.message); }
+}
+
+const SNAP_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+
+async function openSnapshot(vmid) {
+  const c = state.data.containers.find(x => x.vmid === vmid);
+  if (!c) return;
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  $("#snaptitle").textContent = `Take a snapshot of ${c.vmid} · ${c.name}`;
+  $("#snapname").value = `manual-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+  $("#snapdesc").value = "";
+  $("#snaperr").textContent = "";
+  const dlg = $("#snapdlg");
+  dlg.returnValue = "";
+  dlg.showModal();
+  $("#snapname").select();
+  while (true) {
+    const ok = await new Promise(res => dlg.addEventListener("close", () => res(dlg.returnValue === "ok"), { once: true }));
+    if (!ok) return;
+    const name = $("#snapname").value.trim();
+    const error = !SNAP_NAME_RE.test(name) ? "Use a letter first, then letters, digits, - or _ (up to 40)."
+      : name.startsWith("lxcwatch-") ? "Names starting with lxcwatch- are for automatic snapshots, which get cleaned up." : "";
+    if (!error) {
+      try {
+        const r = await api(`/api/containers/${vmid}/snapshots`, { method: "POST", body: JSON.stringify({ name, description: $("#snapdesc").value }) });
+        openJob(r.job, vmid);
+        refresh();
+        return;
+      } catch (e) { $("#snaperr").textContent = e.message; }
+    } else {
+      $("#snaperr").textContent = error;
+    }
+    dlg.returnValue = "";
+    dlg.showModal();
+  }
 }
 
 function renderConn(conn) {
@@ -754,7 +809,7 @@ function renderDetails(first) {
       <button class="primary" data-release="${c.vmid}" ${c.status !== "running" || c.job ? "disabled" : ""}>Upgrade to Debian ${c.release.target}…</button></div>
       <div class="muted" style="margin-top:4px">Runs pre-checks first. Switches the official Debian sources, upgrades every package and restarts the container.</div></div>` : ""}
     <h3>Pending packages (${c.pkg_count})</h3>${pk}
-    <h3>Snapshots</h3>${snaps}
+    <div class="sectionhead"><h3>Snapshots</h3><button data-snapshot="${c.vmid}" ${c.job ? "disabled" : ""}>Take snapshot…</button></div>${snaps}
     <h3>Job history</h3>${jobs}`;
 }
 
@@ -912,6 +967,8 @@ document.addEventListener("click", async ev => {
     if (!confirm(`Restart CT ${vmid}? Its services will be briefly unavailable.`)) return;
     try { const r = await api(`/api/containers/${vmid}/restart`, { method: "POST" }); openJob(r.job, vmid); refresh(); }
     catch (e) { alert(e.message); }
+  } else if (t.dataset.snapshot) {
+    openSnapshot(Number(t.dataset.snapshot));
   } else if (t.dataset.rollback) {
     const vmid = state.drawer.vmid, name = t.dataset.rollback;
     if (!confirm(`Roll CT ${vmid} back to ${name}? Everything changed since that snapshot is lost. The container is restarted if it was running.`)) return;

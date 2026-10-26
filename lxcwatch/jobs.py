@@ -26,7 +26,10 @@ log = logging.getLogger(__name__)
 LOGDIR = "/var/log/lxcwatch"
 MARK = "__LXCWATCH_EXIT__"
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][A-Za-z0-9]|\x1b[=>78]")
-KINDS = ("app", "os", "rollback", "restart", "release")
+KINDS = ("app", "os", "rollback", "restart", "release", "snapshot")
+# Automatic pre-update snapshots use this prefix and get pruned; manual ones don't.
+AUTO_SNAPSHOT_PREFIX = "lxcwatch-"
+MAX_DESCRIPTION = 200
 RESTART_MODES = ("auto", "always", "never")
 
 # Community-scripts' `update` runs its silent path when PHS_SILENT=1 (and
@@ -56,7 +59,7 @@ def clean_line(raw: bytes) -> str:
 
 
 def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target: str | None,
-                token: bool = False, restart: str = "never") -> str:
+                token: bool = False, restart: str = "never", description: str | None = None) -> str:
     q = shlex.quote
     token_file = f"{LOGDIR}/{job_id}.token"
     lines = [
@@ -128,6 +131,12 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
         ]
     elif kind == "restart":
         lines += ["echo '[lxcwatch] restarting container'", f"pct reboot {vmid}", "rc=$?"]
+    elif kind == "snapshot":
+        lines += [
+            f"echo '[lxcwatch] creating snapshot {target}'",
+            f"pct snapshot {vmid} {target} --description {q(description or 'manual snapshot (lxcwatch)')}",
+            "rc=$?",
+        ]
     elif kind == "rollback":
         lines += [
             f"was_running=$(pct status {vmid} | grep -q running && echo 1)",
@@ -166,7 +175,8 @@ class Jobs:
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
 
-    def start(self, vmid: int, kind: str, snapshot: bool, target: str | None = None, restart: str = "never") -> str:
+    def start(self, vmid: int, kind: str, snapshot: bool, target: str | None = None, restart: str = "never",
+              description: str | None = None) -> str:
         if kind not in KINDS:
             raise JobError(f"unknown job kind {kind!r}")
         if restart not in RESTART_MODES:
@@ -185,14 +195,21 @@ class Jobs:
             if not rel:
                 raise JobError(f"CT {vmid} has no release upgrade available")
             target = f"{rel['from']}:{rel['to']}"
+        if kind == "snapshot":
+            if not (target and SNAPSHOT_NAME_RE.match(target)):
+                raise JobError("snapshot names start with a letter and use only letters, digits, - and _ (max 40)")
+            if target.startswith(AUTO_SNAPSHOT_PREFIX):
+                raise JobError(f"names starting with {AUTO_SNAPSHOT_PREFIX} are for automatic snapshots, which get cleaned up")
+            if description and len(description) > MAX_DESCRIPTION:
+                raise JobError(f"description is longer than {MAX_DESCRIPTION} characters")
         if kind == "rollback" and not (target and SNAPSHOT_NAME_RE.match(target)):
             raise JobError("rollback needs a valid snapshot name")
         stamp = time.strftime("%Y%m%d-%H%M%S")
         job_id = f"{stamp}-{vmid}-{secrets.token_hex(2)}"
-        snap = f"lxcwatch-{stamp}" if snapshot and kind in ("app", "os", "release") else None
+        snap = f"{AUTO_SNAPSHOT_PREFIX}{stamp}" if snapshot and kind in ("app", "os", "release") else None
         self.db.create_job(job_id, vmid, row["node"], kind, snap or target)
         self.active[vmid] = job_id
-        self._spawn(self._run(job_id, vmid, row["node"], kind, snap, target, restart if kind == "os" else "never"))
+        self._spawn(self._run(job_id, vmid, row["node"], kind, snap, target, restart if kind == "os" else "never", description))
         return job_id
 
     def resume(self) -> None:
@@ -218,13 +235,14 @@ class Jobs:
         except Exception as e:
             self._fail(job["id"], job["vmid"], e)
 
-    async def _run(self, job_id: str, vmid: int, node: str, kind: str, snap: str | None, target: str | None, restart: str) -> None:
+    async def _run(self, job_id: str, vmid: int, node: str, kind: str, snap: str | None, target: str | None, restart: str,
+                   description: str | None = None) -> None:
         try:
             async with self.sem:
                 self.db.update_job(job_id, status="running")
                 addr = await self.cluster.resolve(node)
                 token = kind == "app" and bool(self.cfg.github_token)
-                script = node_script(job_id, vmid, kind, snap, target, token=token, restart=restart)
+                script = node_script(job_id, vmid, kind, snap, target, token=token, restart=restart, description=description)
                 base = f"{LOGDIR}/{job_id}"
                 prep = f"mkdir -p {LOGDIR} && chmod 700 {LOGDIR}"
                 if token:
@@ -350,7 +368,7 @@ class Jobs:
 
     async def _prune(self, job_id: str, vmid: int) -> None:
         try:
-            ours = [s for s in await self.cluster.snapshots(vmid) if s["name"].startswith("lxcwatch-")]
+            ours = [s for s in await self.cluster.snapshots(vmid) if s["name"].startswith(AUTO_SNAPSHOT_PREFIX)]
             for s in ours[self.cfg.keep_snapshots:]:
                 self._emit(job_id, f"[lxcwatch] removing old snapshot {s['name']}")
                 await self.cluster.delete_snapshot(vmid, s["name"])

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Manual snapshots:** **Take snapshot…** in a container's Details panel snapshots it at any time, running or stopped, whether or not updates are pending. Choose a name (prefilled as `manual-<date>-<time>`) and an optional description. Manual snapshots are never removed by the automatic cleanup after updates.
+
 ## 1.0.0 (2026-10-23)
 
 First stable release. It's the same code as 0.1.36; from here, version numbers follow the usual major.minor.patch meaning.

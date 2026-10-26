@@ -380,3 +380,11 @@ def test_probe_collects_debian_release_details():
     assert any("deb.debian.org" in s["line"] and "bookworm" in s["line"] for s in info["apt_sources"]), info["apt_sources"]
     rel = release_info(info, 13)
     assert rel["to"] == "trixie" and rel["third_party"] == []
+
+
+def test_manual_snapshot_job_script():
+    s = node_script("j11", 111, "snapshot", None, "manual-20261026-0912", description="before config change; it's fine")
+    assert "pct snapshot 111 manual-20261026-0912 --description 'before config change; it'\"'\"'s fine'" in s
+    assert "pct exec" not in s and "pct reboot" not in s
+    subprocess.run(["bash", "-n"], input=s.encode(), check=True)
+    assert "--description 'manual snapshot (lxcwatch)'" in node_script("j12", 111, "snapshot", None, "manual-x")

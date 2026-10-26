@@ -15,7 +15,7 @@ It's built for containers created with the [Proxmox VE community-scripts](https:
   - whether a newer Debian release is available.
 - **Updates from the browser.** It runs the community-script `update`, upgrades packages, does Debian release upgrades (e.g. 12 → 13) or restarts the container, and streams the log live.
 - **Update all.** It updates apps, packages or both across every container that needs it, one container at a time.
-- **Snapshots and rollback.** It can take a snapshot before any update, and roll back with one click.
+- **Snapshots and rollback.** It can take a snapshot before any update, or whenever you like, and roll back with one click.
 - **Notifications.** New updates can go to ntfy, Pushover or a webhook.
 - **Nothing happens on its own.** Scans run on a schedule, but updates only run when you start them.
 
@@ -87,7 +87,7 @@ A GitHub token only needs public read access: a fine-grained token with no extra
 
 - **Security:** the SSH key is effectively root on your whole cluster, and so is anyone who can sign in to lxcwatch. Use a strong password and keep the UI off the internet.
 - **Signing in:** sessions last 30 days, and changing `LXCWATCH_PASSWORD` signs everyone out. After 10 failed sign-ins from one address, that address is locked out for 15 minutes. Scripts can use HTTP basic auth instead, e.g. `curl -u admin:… https://lxcwatch.example/api/containers`. Behind a reverse proxy, pass `X-Forwarded-Proto` so the session cookie is marked secure.
-- **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph) and are off by default; tick "Take a snapshot first" when updating. If a snapshot can't be taken, the update doesn't run. Rolling back restores the whole container, including app data written since the snapshot.
+- **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph) and are off by default; tick "Take a snapshot first" when updating. If a snapshot can't be taken, the update doesn't run. You can also take a snapshot any time with **Take snapshot…** in a container's Details panel. `LXCWATCH_KEEP_SNAPSHOTS` only cleans up the automatic `lxcwatch-*` snapshots, so manual ones stay until you delete them. Rolling back restores the whole container, including app data written since the snapshot.
 - **Restarts:** containers share the host's kernel, so package updates never need a reboot for a new kernel. Services do keep running the old libraries until they restart, and lxcwatch shows **restart needed** when that's the case. Package updates can restart the container afterwards: only if needed (the default), always, or never.
 - **Debian release upgrades** run one major version at a time from a container's Details panel, never as part of Update all. Before starting, lxcwatch checks disk space, held packages, third-party repositories and whether your Proxmox host supports the new version. Only the official Debian sources are switched; third-party repositories stay on the old release. A snapshot is ticked by default; if an upgrade fails part-way, roll back to it.
 - **Apps installed from apt repositories** (Jellyfin, Pi-hole, AdGuard and similar) have no separate app version; their updates show up under Packages.

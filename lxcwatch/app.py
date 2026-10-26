@@ -416,6 +416,21 @@ async def restart(vmid: int):
         raise HTTPException(409, str(e))
 
 
+class SnapshotRequest(BaseModel):
+    name: str
+    description: str | None = None
+
+
+@app.post("/api/containers/{vmid}/snapshots")
+async def take_snapshot(vmid: int, req: SnapshotRequest):
+    """A manual snapshot, any time; never removed by the automatic cleanup."""
+    try:
+        return {"job": jobs.start(vmid, "snapshot", False, target=req.name.strip(),
+                                  description=(req.description or "").strip() or None)}
+    except JobError as e:
+        raise HTTPException(409, str(e))
+
+
 @app.post("/api/containers/{vmid}/snapshots/{name}/rollback")
 async def rollback(vmid: int, name: str):
     try:
