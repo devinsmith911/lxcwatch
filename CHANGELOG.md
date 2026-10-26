@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-10-26)
 
 ### Added
 - **lxcwatch tells you when it has an update.** A badge in the header (e.g. **1.1.0 available**) links to the release notes, and ntfy, Pushover or the webhook get one notification per new version, whatever `LXCWATCH_NOTIFY_PACKAGES` is set to. Turn it off with `LXCWATCH_UPDATE_CHECK=false`.
