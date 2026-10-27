@@ -1,10 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.1.1 (2026-10-27)
 
 ### Changed
-- Clicking anywhere outside the side panel (Details, Activity or a job log) closes it. The rest of the page is dimmed slightly while the panel is open.
-- **Tidier top bar:** the theme switch, the version and **Sign out** moved into a **⋯** menu. The connection badge now shows just the cluster and node count; click it for the address and per-node details. The connection badge, **Activity** and the menu share one size and style, and on phones they shrink to matching icons.
+- Visual tweaks: a tidier top bar, and clicking outside the side panel closes it.
 
 ## 1.1.0 (2026-10-26)
 

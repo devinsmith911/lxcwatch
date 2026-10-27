@@ -1,6 +1,6 @@
 [project]
 name = "lxcwatch"
-version = "1.1.0"
+version = "1.1.1"
 description = "Track and update community-scripts LXCs across a Proxmox cluster"
 requires-python = ">=3.11"
 dependencies = [
