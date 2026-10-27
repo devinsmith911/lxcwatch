@@ -145,6 +145,9 @@ tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 45%, trans
 .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .bulk { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: none; gap: 10px; align-items: center; box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 6; flex-wrap: wrap; max-width: calc(100% - 32px); }
 .bulk.show { display: flex; }
+/* Covers the main area while the side panel is open; clicking it closes the panel. */
+.scrim { position: fixed; inset: 0; background: rgba(15, 18, 30, .18); opacity: 0; pointer-events: none; transition: opacity .18s ease; z-index: 9; }
+.scrim.show { opacity: 1; pointer-events: auto; cursor: pointer; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100%); background: var(--panel); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform .18s ease; z-index: 10; display: flex; flex-direction: column; }
 .drawer.open { transform: none; }
 .drawer header { position: static; }
@@ -282,6 +285,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   <button id="bulkclear">Clear</button>
 </div>
 
+<div class="scrim" id="scrim" title="Close"></div>
 <aside class="drawer" id="drawer">
   <header>
     <div><h1 id="dtitle"></h1><div class="muted small" id="dsub"></div></div>
@@ -815,10 +819,12 @@ function openDrawer(title, sub) {
   $("#dtitle").textContent = title;
   $("#dsub").textContent = sub || "";
   $("#drawer").classList.add("open");
+  $("#scrim").classList.add("show");
 }
 
 function closeDrawer() {
   $("#drawer").classList.remove("open");
+  $("#scrim").classList.remove("show");
   state.drawer = null;
   if (state.es) { state.es.close(); state.es = null; }
 }
@@ -1062,6 +1068,7 @@ document.addEventListener("click", async ev => {
     catch (e) { alert(e.message); t.disabled = false; }
   }
 });
+$("#scrim").addEventListener("click", closeDrawer);
 $("#q").addEventListener("input", e => { state.q = e.target.value; state.page = 1; render(); });
 $("#pagesize").value = String(state.pageSize);
 $("#pagesize").addEventListener("change", e => { state.pageSize = Number(e.target.value); store("pageSize", state.pageSize); state.page = 1; render(); });

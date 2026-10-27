@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Clicking anywhere outside the side panel (Details, Activity or a job log) closes it. The rest of the page is dimmed slightly while the panel is open.
+
 ## 1.1.0 (2026-10-26)
 
 ### Added
