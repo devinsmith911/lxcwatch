@@ -51,6 +51,18 @@ header.hero button.primary { background: #ffffff; color: #3b2fc9; border-color: 
 .conn { position: relative; }
 .conn summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); font-size: 13px; }
 .conn summary::-webkit-details-marker { display: none; }
+.menu summary { font-size: 16px; line-height: 1; padding: 6px 12px; letter-spacing: 1px; }
+.menu .pop { min-width: 280px; }
+.menu .pop .menurow { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }
+.menu .pop hr { border: 0; border-top: 1px solid var(--border); margin: 6px 0; }
+.menu .pop button { background: var(--panel); color: var(--text); border-color: var(--border); }
+.menu .pop button:hover:not(:disabled) { background: var(--chip); border-color: var(--accent); }
+.menu .pop .menuitem { width: 100%; text-align: left; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; margin-left: -1px; padding: 4px 8px; font-size: 12px; }
+.seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.menu .pop .seg button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .conn .pop { position: absolute; right: 0; top: calc(100% + 6px); background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 260px; box-shadow: 0 8px 28px rgba(0,0,0,.2); z-index: 20; }
 .conn .pop div { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
 header.hero .conn .pop .muted { color: var(--muted); }
@@ -234,14 +246,24 @@ a.ext::after { content: " ↗"; font-size: .85em; }
 <header class="hero">
   <div class="brand">
     <img src="/icon.svg" alt="" width="36" height="36">
-    <h1>lxcwatch <span class="muted small" id="version" style="font-weight:400"></span></h1>
+    <h1>lxcwatch</h1>
     <a id="selfupdate" class="selfupdate" target="_blank" rel="noopener" hidden></a>
   </div>
   <div class="actions">
     <details class="conn" id="conn"><summary><span class="dot"></span><span>Connecting…</span></summary></details>
     <button id="activitybtn" title="Recent jobs across all containers">Activity</button>
-    <button id="themebtn" class="iconbtn" title="Theme"></button>
-    <button id="logoutbtn" title="Sign out">Sign out</button>
+    <details class="conn menu" id="menu"><summary aria-label="Menu" title="Menu">⋯</summary>
+      <div class="pop">
+        <div class="menurow"><span class="muted">Theme</span>
+          <span class="seg" role="group" aria-label="Theme">
+            <button data-themeset="system" title="Follow the system">◐ System</button><button data-themeset="light">☀ Light</button><button data-themeset="dark">☾ Dark</button>
+          </span></div>
+        <div class="menurow"><span class="muted">Version</span>
+          <span><span id="version">—</span> · <a href="https://github.com/devinsmith911/lxcwatch/releases" target="_blank" rel="noopener" class="ext">release notes</a></span></div>
+        <hr>
+        <button id="logoutbtn" class="menuitem">Sign out</button>
+      </div>
+    </details>
   </div>
 </header>
 <main>
@@ -510,7 +532,7 @@ function render() {
   const cs = d.containers;
   const s = d.scan;
   renderConn(d.connection);
-  $("#version").textContent = d.version && d.version !== "dev" ? `v${d.version}` : "";
+  $("#version").textContent = d.version && d.version !== "dev" ? d.version : "development build";
   renderBatch(d.batch);
   const next = s.next_at ? ` · next ${until(s.next_at)}` : s.interval_minutes > 0 ? "" : " · scheduled scans off";
   $("#scaninfo").textContent = s.running ? "Scanning…" : `${s.last ? `Last scan ${ago(s.last.at)}` : "Not scanned yet"}${next}`;
@@ -748,7 +770,7 @@ function renderConn(conn) {
   const online = conn.nodes.filter(n => n.online).length;
   const where = `${esc(conn.user)}@${esc(conn.host)}${conn.port !== 22 ? `:${conn.port}` : ""}`;
   const label = conn.ok === null ? `Connecting to ${where}…`
-    : conn.ok ? `${where}${conn.cluster ? ` · ${esc(conn.cluster)}` : ""} · ${online}/${conn.nodes.length} node${conn.nodes.length === 1 ? "" : "s"}`
+    : conn.ok ? `${esc(conn.cluster || conn.host)} · ${online}/${conn.nodes.length} node${conn.nodes.length === 1 ? "" : "s"}`
     : `Can't reach ${where}`;
   const dot = conn.ok === null ? "" : conn.ok && online === conn.nodes.length ? "ok" : "bad";
   const short = conn.ok === null ? "…" : conn.ok ? `${online}/${conn.nodes.length} nodes` : "offline";
@@ -1074,31 +1096,31 @@ $("#pagesize").value = String(state.pageSize);
 $("#pagesize").addEventListener("change", e => { state.pageSize = Number(e.target.value); store("pageSize", state.pageSize); state.page = 1; render(); });
 $("#prev").addEventListener("click", () => { state.page--; render(); scrollTo({ top: 0, behavior: "smooth" }); });
 $("#next").addEventListener("click", () => { state.page++; render(); scrollTo({ top: 0, behavior: "smooth" }); });
-const THEMES = { system: "◐", light: "☀", dark: "☾" };
+const THEMES = ["system", "light", "dark"];
 function applyTheme(t) {
   if (t === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
-  $("#themebtn").textContent = THEMES[t];
-  $("#themebtn").title = `Theme: ${t} (click to change)`;
+  document.querySelectorAll("[data-themeset]").forEach(b => b.classList.toggle("on", b.dataset.themeset === t));
 }
 let theme = stored("theme", "system");
-if (!THEMES[theme]) theme = "system";
+if (!THEMES.includes(theme)) theme = "system";
 applyTheme(theme);
 $("#logoutbtn").addEventListener("click", async () => {
   try { await api("/api/logout", { method: "POST" }); } catch {}
   location.replace("/login");
 });
-$("#themebtn").addEventListener("click", () => {
-  const order = Object.keys(THEMES);
-  theme = order[(order.indexOf(theme) + 1) % order.length];
+document.querySelectorAll("[data-themeset]").forEach(b => b.addEventListener("click", () => {
+  theme = b.dataset.themeset;
   store("theme", theme);
   applyTheme(theme);
-});
+}));
 for (const [id, key] of [["hidestopped", "hideStopped"], ["hideunknown", "hideUnknown"]]) {
   $(`#${id}`).checked = state[key];
   $(`#${id}`).addEventListener("change", e => { state[key] = e.target.checked; store(key, state[key]); state.page = 1; render(); });
 }
-document.addEventListener("click", e => { if (!e.target.closest("#conn")) $("#conn").open = false; });
+document.addEventListener("click", e => {
+  for (const id of ["conn", "menu"]) if (!e.target.closest(`#${id}`)) $(`#${id}`).open = false;
+});
 // Remember which release notes are expanded across the periodic re-render.
 document.addEventListener("toggle", e => {
   const id = e.target.dataset?.open;
