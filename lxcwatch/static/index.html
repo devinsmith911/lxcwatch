@@ -51,7 +51,15 @@ header.hero button.primary { background: #ffffff; color: #3b2fc9; border-color: 
 .conn { position: relative; }
 .conn summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); font-size: 13px; }
 .conn summary::-webkit-details-marker { display: none; }
-.menu summary { font-size: 16px; line-height: 1; padding: 6px 12px; letter-spacing: 1px; }
+/* Header controls share one shape: 32px pills, 13px text, same tint. */
+header.hero .hbtn, header.hero .conn summary.hbtn { box-sizing: border-box; height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 0 11px; font: 500 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif; border-radius: 8px;
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); color: var(--hero-text); }
+header.hero .hbtn:hover, header.hero .conn summary.hbtn:hover { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.5); }
+header.hero .hbtn.icon { width: 32px; padding: 0; }
+header.hero details[open] > summary.hbtn { background: rgba(255,255,255,.26); }
+.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.menu .ico circle { fill: currentColor; stroke: none; }
 .menu .pop { min-width: 280px; }
 .menu .pop .menurow { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }
 .menu .pop hr { border: 0; border-top: 1px solid var(--border); margin: 6px 0; }
@@ -193,7 +201,8 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   /* Narrow header: logo, update badge, status dot, then the buttons. */
   header.hero h1 { display: none; }
   .conn-short { display: none !important; }
-  .conn summary { padding: 6px 8px; }
+  header.hero .hbtn .hlabel { display: none; }
+  header.hero .hbtn, header.hero .conn summary.hbtn { width: 32px; padding: 0; }
   .selfupdate { font-size: 11px; padding: 1px 7px; }
   .selfupdate .lbl-long { display: none; }
   .selfupdate .lbl-short { display: inline; }
@@ -202,7 +211,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   header.hero .actions { flex-wrap: nowrap; gap: 6px; }
   .conn-long { display: none; }
   .conn-short { display: inline; }
-  .conn summary { padding: 4px 8px; }
+
   .conn .pop { right: 0; left: auto; min-width: 240px; }
   main { padding-top: 6px; }
   /* Stat boxes: one compact row that scrolls sideways. */
@@ -250,9 +259,9 @@ a.ext::after { content: " ↗"; font-size: .85em; }
     <a id="selfupdate" class="selfupdate" target="_blank" rel="noopener" hidden></a>
   </div>
   <div class="actions">
-    <details class="conn" id="conn"><summary><span class="dot"></span><span>Connecting…</span></summary></details>
-    <button id="activitybtn" title="Recent jobs across all containers">Activity</button>
-    <details class="conn menu" id="menu"><summary aria-label="Menu" title="Menu">⋯</summary>
+    <details class="conn" id="conn"><summary class="hbtn"><span class="dot"></span><span>Connecting…</span></summary></details>
+    <button id="activitybtn" class="hbtn" title="Activity: recent jobs across all containers"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg><span class="hlabel">Activity</span></button>
+    <details class="conn menu" id="menu"><summary class="hbtn icon" aria-label="Menu" title="Menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></summary>
       <div class="pop">
         <div class="menurow"><span class="muted">Theme</span>
           <span class="seg" role="group" aria-label="Theme">
