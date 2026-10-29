@@ -5,6 +5,10 @@
 ### Added
 - Apps installed with apt (Jellyfin, Plex, Grafana, cloudflared and others from a vendor repo, or a distro package named after the app) now show their installed version, any pending upgrade, and links to the project. Where the source repo is known, "What's new" shows the release notes in between.
 
+### Changed
+- "Hide unknown" is now "Hide non-scripts", which hides only containers that weren't installed with community-scripts. Community-script containers whose version can't be determined have their own "Unknown version" box instead.
+- A tidier details panel: an ✕ close button that stays put on phones, and the action buttons laid out in a grid there.
+
 ## 1.1.1 (2026-10-27)
 
 ### Changed

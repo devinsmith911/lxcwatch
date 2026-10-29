@@ -170,13 +170,23 @@ tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 45%, trans
 .scrim.show { opacity: 1; pointer-events: auto; cursor: pointer; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100%); background: var(--panel); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform .18s ease; z-index: 10; display: flex; flex-direction: column; }
 .drawer.open { transform: none; }
-.drawer header { position: static; }
+.drawer header { position: static; flex-wrap: nowrap; align-items: flex-start; }
+.drawer header > div { flex: 1; min-width: 0; }
+.drawer header h1 { margin: 0; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer #dsub { margin-top: 2px; overflow-wrap: anywhere; }
+.xbtn { flex: none; width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-color: transparent; background: transparent; color: var(--muted); border-radius: 8px; }
+.xbtn:hover:not(:disabled) { border-color: var(--border); background: var(--bg); color: var(--text); }
+.xbtn .ico { width: 18px; height: 18px; }
+.dactions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
 .drawer .body { overflow: auto; padding: 16px 20px; flex: 1; }
 .drawer h3 { margin: 18px 0 8px; font-size: 14px; }
 pre.log { background: var(--code); color: var(--code-text); padding: 12px; border-radius: 6px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 55vh; overflow: auto; margin: 0; }
 .list { border: 1px solid var(--border); border-radius: 6px; }
 .list > div { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 7px 10px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .list > div:last-child { border-bottom: 0; }
+.list > .jobrow { flex-wrap: nowrap; }
+.jobrow .jobwhen::before { content: " · "; }
+.jobrow .actions { flex-wrap: nowrap; flex: none; }
 dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); max-width: min(520px, calc(100% - 32px)); }
 dialog::backdrop { background: rgba(0,0,0,.35); }
 .err { color: var(--bad); }
@@ -194,6 +204,14 @@ a.ext::after { content: " ↗"; font-size: .85em; }
 .rel pre { white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, Menlo, monospace; background: var(--chip); padding: 10px; border-radius: 6px; margin: 6px 0 0; max-height: 360px; overflow: auto; }
 .whatsnew { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 6%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); }
 @media (max-width: 760px) {
+  .drawer header { padding-top: 12px; padding-bottom: 12px; }
+  .drawer header h1 { font-size: 16px; }
+  .drawer .body { padding: 14px 12px; }
+  .dactions { display: grid; grid-template-columns: 1fr 1fr; }
+  .dactions button { padding: 8px 10px; }
+  .dactions button[data-job] { grid-column: 1 / -1; }
+  .jobrow .jobwhen { display: block; }
+  .jobrow .jobwhen::before { content: none; }
   header, main { padding-left: 12px; padding-right: 12px; }
   header.hero { padding-top: 10px; padding-bottom: 10px; flex-wrap: nowrap; }
   header.hero .brand img { width: 28px; height: 28px; border-radius: 7px; }
@@ -280,7 +298,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   <div class="toolbar">
     <input type="search" id="q" placeholder="Filter by name, ID, node, tag">
     <label class="toggle chip"><input type="checkbox" id="hidestopped"> Hide stopped</label>
-    <label class="toggle chip" title="Containers whose app version lxcwatch can't determine: not from community-scripts, never scanned, or no version found"><input type="checkbox" id="hideunknown"> Hide unknown</label>
+    <label class="toggle chip" title="Containers that weren't installed with community-scripts (no update command)"><input type="checkbox" id="hidenonscript"> Hide non-scripts</label>
     <span class="spacer"></span>
     <div class="scanbar">
       <span class="scaninfo" id="scaninfo">Loading…</span>
@@ -320,7 +338,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
 <aside class="drawer" id="drawer">
   <header>
     <div><h1 id="dtitle"></h1><div class="muted small" id="dsub"></div></div>
-    <button id="dclose">Close</button>
+    <button id="dclose" class="xbtn" aria-label="Close" title="Close (Esc)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </header>
   <div class="body" id="dbody"></div>
 </aside>
@@ -406,7 +424,7 @@ function store(key, value) {
 }
 const state = {
   data: null, filter: "all", q: "", selected: new Set(), drawer: null, es: null,
-  page: 1, pageSize: stored("pageSize", 10), hideStopped: stored("hideStopped", false), hideUnknown: stored("hideUnknown", false),
+  page: 1, pageSize: stored("pageSize", 10), hideStopped: stored("hideStopped", false), hideNonScript: stored("hideNonScript", false),
 };
 
 function toLogin() {
@@ -459,9 +477,12 @@ function ago(ts) {
 
 const needsUpdate = c => c.outdated > 0 || c.pkg_count > 0;
 // Running, but we can't say what app version it has.
-const isUnknown = c => c.status === "running" && (!c.scanned_at || (!c.script && !c.components.length)
+// Scanned fine, but there's no community-scripts `update` in it.
+const notScript = c => !!c.os && !c.script;
+// A community-script (or not yet scanned) container whose app version we can't tell.
+const isUnknown = c => c.status === "running" && !notScript(c) && (!c.scanned_at || !c.os
   || (c.components.length > 0 && c.components.every(x => x.state === "unknown" || x.state === "untracked")));
-const rowState = c => c.status !== "running" ? "stopped" : c.pkg_security ? "security" : needsUpdate(c) ? "outdated" : isUnknown(c) ? "unknown" : "current";
+const rowState = c => c.status !== "running" ? "stopped" : c.pkg_security ? "security" : needsUpdate(c) ? "outdated" : isUnknown(c) || notScript(c) ? "unknown" : "current";
 // community-scripts reports removed scripts as state "deleted" or found: false with a message.
 const retired = c => !!c.script_state && (c.script_state.state === "deleted" || (c.script_state.found === false && !!c.script_state.message));
 const problem = c => c.error || c.failures?.some(f => !f.superseded) || c.upstream_errors.length || c.components.some(x => x.pending) || retired(c) || c.last_job?.status === "failed";
@@ -470,7 +491,8 @@ function visible() {
   const q = state.q.toLowerCase();
   return state.data.containers.filter(c => {
     if (state.hideStopped && c.status !== "running") return false;
-    if (state.hideUnknown && isUnknown(c)) return false;
+    if (state.hideNonScript && notScript(c)) return false;
+    if (state.filter === "unknown" && !isUnknown(c)) return false;
     if (state.filter === "app" && !c.outdated) return false;
     if (state.filter === "packages" && !c.pkg_count) return false;
     if (state.filter === "security" && !c.pkg_security) return false;
@@ -558,6 +580,7 @@ function render() {
     ["packages", "Package updates", cs.filter(c => c.pkg_count).length, "--info"],
     ["security", "Security", cs.filter(c => c.pkg_security).length, "--bad"],
     ["problems", "Problems", cs.filter(problem).length, "--bad"],
+    ["unknown", "Unknown version", cs.filter(isUnknown).length, "--idle"],
   ];
   $("#stats").innerHTML = stats.map(([f, k, v, color, sub]) => {
     const live = v || f === "all";
@@ -890,12 +913,12 @@ function renderDetails(first) {
   else if (dr.snaps) snaps = dr.snaps.value.length ? `<div class="list">${dr.snaps.value.map(s => `<div><span>${esc(s.name)} <span class="muted small">${s.snaptime ? new Date(s.snaptime * 1000).toLocaleString() : ""} ${esc(s.description || "")}</span></span>
       <span class="actions"><button data-rollback="${esc(s.name)}" ${c.job ? "disabled" : ""}>Roll back</button><button class="danger" data-delsnap="${esc(s.name)}" ${c.job ? "disabled" : ""}>Delete</button></span></div>`).join("")}</div>` : `<p class="muted">No snapshots.</p>`;
   let jobs = `<p class="muted">Loading…</p>`;
-  if (dr.jobs?.status === "fulfilled") jobs = dr.jobs.value.length ? `<div class="list">${dr.jobs.value.map(j => `<div><span>${esc(KIND_LABEL[j.kind] || j.kind)} · ${new Date(j.created_at * 1000).toLocaleString()}</span>
+  if (dr.jobs?.status === "fulfilled") jobs = dr.jobs.value.length ? `<div class="list">${dr.jobs.value.map(j => `<div class="jobrow"><span>${esc(KIND_LABEL[j.kind] || j.kind)}<span class="muted small jobwhen">${new Date(j.created_at * 1000).toLocaleString()}</span></span>
       <span class="actions"><span class="badge ${j.status === "success" ? "ok" : j.status === "failed" ? "bad" : "warn"}">${esc(j.status)}${j.rc != null && j.rc !== 0 ? ` (${j.rc})` : ""}</span><button data-job="${esc(j.id)}">Log</button></span></div>`).join("")}</div>` : `<p class="muted">No jobs yet.</p>`;
   $("#dbody").innerHTML = `
-    <div class="actions">
-      <button data-act="app" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.script ? "disabled" : ""} class="primary">Update app</button>
-      <button data-act="os" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.pkgmgr ? "disabled" : ""}>Update packages</button>
+    <div class="dactions">
+      <button data-act="app" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.script ? "disabled" : ""} class="${c.outdated ? "primary" : ""}">Update app</button>
+      <button data-act="os" data-id="${c.vmid}" ${c.status !== "running" || c.job || !c.pkgmgr ? "disabled" : ""} class="${c.pkg_count ? "primary" : ""}">Update packages</button>
       <button data-restart="${c.vmid}" ${c.status !== "running" || c.job ? "disabled" : ""} class="${c.restart_needed ? "primary" : ""}">Restart</button>
       <button data-rescan="${c.vmid}" ${c.scanning || c.status !== "running" ? "disabled" : ""}>${c.scanning ? "Scanning…" : "Rescan"}</button>
       ${c.job ? `<button data-job="${esc(c.job)}">Live log</button>` : ""}
@@ -1130,7 +1153,7 @@ document.querySelectorAll("[data-themeset]").forEach(b => b.addEventListener("cl
   store("theme", theme);
   applyTheme(theme);
 }));
-for (const [id, key] of [["hidestopped", "hideStopped"], ["hideunknown", "hideUnknown"]]) {
+for (const [id, key] of [["hidestopped", "hideStopped"], ["hidenonscript", "hideNonScript"]]) {
   $(`#${id}`).checked = state[key];
   $(`#${id}`).addEventListener("change", e => { state[key] = e.target.checked; store(key, state[key]); state.page = 1; render(); });
 }
