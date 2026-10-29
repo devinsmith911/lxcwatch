@@ -215,6 +215,84 @@ def build_components(checks: list[Check], versions: dict[str, str], latest: dict
     return components
 
 
+FORGE_URL_RE = re.compile(r"^https?://(?:www\.)?(github\.com|gitlab\.com|codeberg\.org)/([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
+FORGE_HOSTS = {"github.com": "github", "gitlab.com": "gitlab", "codeberg.org": "codeberg"}
+# Packages whose Homepage field is a website rather than their source repo.
+PACKAGE_REPOS = {
+    "jellyfin": "jellyfin/jellyfin", "jellyfin-server": "jellyfin/jellyfin", "jellyfin-web": "jellyfin/jellyfin-web",
+    "grafana": "grafana/grafana", "grafana-enterprise": "grafana/grafana", "influxdb2": "influxdata/influxdb",
+    "caddy": "caddyserver/caddy", "nodejs": "nodejs/node", "syncthing": "syncthing/syncthing",
+}
+NOT_AN_APP_RE = re.compile(r"^lib|-(common|data|doc|dev|dbg)$")
+DISTROS = {"debian": ("Debian", "https://packages.debian.org"), "ubuntu": ("Ubuntu", "https://packages.ubuntu.com")}
+
+
+def deb_upstream_version(version: str | None) -> str | None:
+    """The upstream part of a Debian version: "1:2.7.12-1~deb13" -> "2.7.12"."""
+    if not version:
+        return version
+    v = version.split(":", 1)[1] if re.match(r"^\d+:", version) else version
+    if "-" in v:
+        v = v.rsplit("-", 1)[0]
+    return re.split(r"[+~]", v, maxsplit=1)[0] or version
+
+
+def package_components(pkgs: list[dict], names: list[str | None], pending: list[dict],
+                       components: list[dict], os_id: str | None = None, codename: str | None = None) -> list[dict]:
+    """Components for apps installed with apt, from the probe's package candidates.
+
+    The app's own package is the one named after it (exact name, then
+    <name>-server, then the shortest name starting with it). Containers with
+    no other app versions fall back to what they installed from vendor repos.
+    """
+    pkgs = list({p["name"]: p for p in pkgs}.values())
+    taken = {c["name"].lower().replace(" ", "") for c in components}
+    names = [n.lower().replace(" ", "") for n in names if n and len(n) >= 3]
+
+    def rank(p: dict) -> tuple | None:
+        for n in names:
+            if p["name"] == n:
+                return (0, 0)
+            if p["name"] == f"{n}-server":
+                return (1, 0)
+        if any(p["name"].startswith(n) for n in names):
+            return (2, p["origin"] is None, len(p["name"]))
+        return None
+
+    related = sorted((rank(p), p["name"], p) for p in pkgs if rank(p) and p["name"] not in taken)
+    if related:
+        picked = [related[0][2]]
+    elif not components:
+        picked = [p for p in sorted(pkgs, key=lambda p: p["name"])
+                  if p["origin"] and not NOT_AN_APP_RE.search(p["name"])][:5]
+    else:
+        picked = []
+    upgrades = {p["name"]: p["to"] for p in pending}
+    distro, packages_site = DISTROS.get(os_id or "", (None, None))
+    out = []
+    for p in picked:
+        forge = repo = None
+        m = FORGE_URL_RE.match(p.get("homepage") or "")
+        if m:
+            forge, repo = FORGE_HOSTS[m.group(1)], m.group(2)
+        elif p["name"] in PACKAGE_REPOS:
+            forge, repo = "github", PACKAGE_REPOS[p["name"]]
+        target = upgrades.get(p["name"], p["version"])
+        links = repo_links(forge, repo, None) if repo else {"repo_url": None, "releases_url": None, "release_url": None}
+        out.append({
+            "name": p["name"], "source": "apt", "origin": p["origin"] or distro,
+            "repo": repo, "forge": forge, "installed": p["version"], "target": target, "target_tag": None,
+            "upstream": None, "pinned": False, "pending": False,
+            "state": "outdated" if p["name"] in upgrades else "current",
+            # Debian versions carry epochs and revisions; release tags don't.
+            "notes_installed": deb_upstream_version(p["version"]), "notes_target": deb_upstream_version(target),
+            "homepage": p.get("homepage"),
+            "package_url": f"{packages_site}/{codename}/{p['name']}" if packages_site and codename and not p["origin"] else None,
+            **links,
+        })
+    return out
+
+
 class RateLimited(httpx.HTTPError):
     pass
 

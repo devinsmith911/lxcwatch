@@ -6,7 +6,7 @@ import pytest
 
 from lxcwatch.jobs import MARK, clean_line, node_script
 from lxcwatch.probe import parse_probe, probe_script
-from lxcwatch.upstream import Check, build_components, parse_checks, strip_v
+from lxcwatch.upstream import Check, build_components, deb_upstream_version, package_components, parse_checks, strip_v
 
 HERE = os.path.dirname(__file__)
 
@@ -388,3 +388,72 @@ def test_manual_snapshot_job_script():
     assert "pct exec" not in s and "pct reboot" not in s
     subprocess.run(["bash", "-n"], input=s.encode(), check=True)
     assert "--description 'manual snapshot (lxcwatch)'" in node_script("j12", 111, "snapshot", None, "manual-x")
+
+
+def test_deb_upstream_version():
+    assert deb_upstream_version("10.11.0+deb13") == "10.11.0"
+    assert deb_upstream_version("5:28.5.1-1~debian.13~trixie") == "28.5.1"
+    assert deb_upstream_version("2025.10.0") == "2025.10.0"
+    assert deb_upstream_version("2.7.12-1") == "2.7.12"
+
+
+def _pkg(name, version="1.0", origin="Vendor", homepage=None):
+    return {"name": name, "version": version, "origin": origin, "homepage": homepage}
+
+
+def test_package_components_pick_the_apps_package():
+    pkgs = [_pkg("jellyfin", "10.11.0+deb13", "Jellyfin"), _pkg("jellyfin-server", "10.11.0+deb13", "Jellyfin"),
+            _pkg("jellyfin-ffmpeg7", "7.1-1", "Jellyfin"), _pkg("nodejs", "22.1.0-1nodesource1", "Node Source")]
+    pending = [{"name": "jellyfin", "from": "10.11.0+deb13", "to": "10.11.1+deb13", "security": False}]
+    [c] = package_components(pkgs, ["jellyfin", "jellyfin", None], pending, [])
+    assert c["name"] == "jellyfin" and c["source"] == "apt" and c["origin"] == "Jellyfin"
+    assert c["state"] == "outdated" and c["installed"] == "10.11.0+deb13" and c["target"] == "10.11.1+deb13"
+    assert (c["forge"], c["repo"]) == ("github", "jellyfin/jellyfin")
+    assert (c["notes_installed"], c["notes_target"]) == ("10.11.0", "10.11.1")
+    assert c["releases_url"] == "https://github.com/jellyfin/jellyfin/releases"
+    # Shortest related name when nothing matches exactly; -server before that.
+    [c] = package_components([_pkg("plexmediaserver"), _pkg("plex-tools-extra")], ["plex"], [], [])
+    assert c["name"] == "plexmediaserver"
+    [c] = package_components([_pkg("redis-tools", origin=None), _pkg("redis-server", origin=None)], ["redis"], [],
+                             [], "debian", "trixie")
+    assert c["name"] == "redis-server" and c["state"] == "current" and c["origin"] == "Debian"
+    assert c["package_url"] == "https://packages.debian.org/trixie/redis-server" and c["repo"] is None
+
+
+def test_package_components_homepage_and_fallbacks():
+    [c] = package_components([_pkg("cloudflared", "2025.9.1", "cloudflared", "https://github.com/cloudflare/cloudflared")],
+                             ["cloudflared"], [], [])
+    assert c["repo"] == "cloudflare/cloudflared"
+    # Already tracked from a version file: don't show it twice.
+    tracked = [{"name": "caddy", "state": "current"}]
+    assert package_components([_pkg("caddy")], ["caddy"], [], tracked) == []
+    # A tracked app ignores unrelated vendor packages (Node.js from NodeSource)...
+    assert package_components([_pkg("nodejs")], ["immich"], [], tracked) == []
+    # ...but with nothing else to show, vendor packages are the best guess.
+    comps = package_components([_pkg("libfoo1"), _pkg("nodejs"), _pkg("bash", origin=None)], [None], [], [])
+    assert [c["name"] for c in comps] == ["nodejs"]
+
+
+def test_parse_probe_app_packages():
+    info = parse_probe("apppkg:cloudflared\t2025.9.1\tcloudflared\thttps://github.com/cloudflare/cloudflared\n"
+                       "apppkg:bash\t5.2.37-2\t-\t\nprobe_ok=1\n")
+    assert info["app_packages"] == [
+        {"name": "cloudflared", "version": "2025.9.1", "origin": "cloudflared", "homepage": "https://github.com/cloudflare/cloudflared"},
+        {"name": "bash", "version": "5.2.37-2", "origin": None, "homepage": None},
+    ]
+
+
+@pytest.mark.skipif(not DOCKER, reason="docker not available")
+def test_probe_reports_app_packages():
+    # A fake vendor repo that "ships" base-files, and a script named after bash.
+    setup = ("L=/var/lib/apt/lists; mkdir -p $L; printf 'Origin: Example\\n' > $L/repo.example.com_dists_stable_InRelease; "
+             "printf 'Package: base-files\\nVersion: 99\\n\\nPackage: not-installed\\n' > $L/repo.example.com_dists_stable_main_binary-amd64_Packages; "
+             "printf 'Origin: Debian\\n' > $L/mirror.local_debian_dists_trixie_InRelease; "
+             "printf 'Package: dash\\n' > $L/mirror.local_debian_dists_trixie_main_binary-amd64_Packages; "
+             "printf 'export UPDATE_SCRIPT_NAME=\"bash\"\\n' > /usr/bin/update;\n")
+    r = subprocess.run(["docker", "run", "--rm", "-i", "debian:13", "sh", "-c", setup + probe_script(False)],
+                       capture_output=True, text=True, timeout=120)
+    info = parse_probe(r.stdout)
+    got = {p["name"]: p["origin"] for p in info["app_packages"]}
+    assert got == {"base-files": "Example", "bash": None}, r.stdout + r.stderr
+    assert info["os_codename"] == "trixie"

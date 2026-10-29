@@ -35,6 +35,7 @@ packaging/build-deb.sh               # local .deb, versioned <last tag>+dev<n>.<
 - In remote shell commands, a trailing `&` backgrounds the whole `&&` chain, which then reads stdin from `/dev/null`. Wrap it: `{ nohup … & }`.
 - Version files (`/root/.<app>`) only count if their value is one token containing a digit. That filters out `.hushlogin`, and `.install-*.failed` files are failure flags, not versions.
 - `/usr/bin/update` has three forms: `UPDATE_SCRIPT_NAME` exports, a legacy `…/ct/<name>.sh` URL, or a full copy of the ct script (name taken from `APP=`).
+- Apps installed with apt are found from `/var/lib/apt/lists`: a repo whose Release `Origin` isn't Debian/Ubuntu is a vendor repo. Indexes can be stored compressed (`Packages.lz4`, the default in Docker's Debian image), so read them with `apt-helper cat-file`.
 - Snapshots: automatic ones are `lxcwatch-*` and get pruned (`KEEP_SNAPSHOTS`); `manual-*` and any other name are never pruned.
 - Manual scans set `upstream.FRESH_SINCE` (a context variable), so cached upstream data older than the scan is refetched once per scan. Scheduled scans use the cache.
 - Every POST/DELETE needs the `X-Requested-With: lxcwatch` header (CSRF protection).

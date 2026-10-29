@@ -459,7 +459,7 @@ function ago(ts) {
 
 const needsUpdate = c => c.outdated > 0 || c.pkg_count > 0;
 // Running, but we can't say what app version it has.
-const isUnknown = c => c.status === "running" && (!c.scanned_at || !c.script
+const isUnknown = c => c.status === "running" && (!c.scanned_at || (!c.script && !c.components.length)
   || (c.components.length > 0 && c.components.every(x => x.state === "unknown" || x.state === "untracked")));
 const rowState = c => c.status !== "running" ? "stopped" : c.pkg_security ? "security" : needsUpdate(c) ? "outdated" : isUnknown(c) ? "unknown" : "current";
 // community-scripts reports removed scripts as state "deleted" or found: false with a message.
@@ -480,11 +480,14 @@ function visible() {
   });
 }
 
+// Apps installed with apt: a small tag naming where the package came from.
+const aptTag = x => x.source === "apt" ? ` <span class="badge" title="Installed with apt${x.origin ? ` from ${esc(x.origin)}` : ""}">apt</span>` : "";
+
 function compHtml(c) {
   if (c.status !== "running" && !c.components.length) return `<span class="muted dash">—</span>`;
-  if (!c.script) return `<span class="badge info">not a community-script</span>`;
+  if (!c.script && !c.components.length) return `<span class="badge info">not a community-script</span>`;
   const parts = c.components.map(x => {
-    const name = esc(x.name);
+    const name = esc(x.name) + aptTag(x);
     if (x.state === "outdated") {
       const target = x.release_url ? `<a href="${esc(x.release_url)}" target="_blank" rel="noopener" title="Release notes for ${esc(x.target_tag)}">${esc(x.target)}</a>` : esc(x.target);
       return `<div class="comp" title="${esc(x.repo)}">${name} ${esc(x.installed)} <span class="arrow">→ ${target}</span>${x.pinned ? ' <span class="badge">pinned</span>' : ""}${x.release_url ? ` <a class="small ext" href="${esc(x.release_url)}" target="_blank" rel="noopener">notes</a>` : ""}</div>`;
@@ -925,16 +928,20 @@ const notesKey = x => `${x.forge}|${x.repo}|${x.installed}|${x.target}`;
 function compDetail(x, dr) {
   const ver = `installed ${esc(x.installed ?? "?")} · target ${x.release_url ? `<a href="${esc(x.release_url)}" target="_blank" rel="noopener">${esc(x.target ?? "?")}</a>` : esc(x.target ?? "?")}${
     x.upstream && x.upstream !== x.target ? ` · upstream ${x.upstream_url ? `<a href="${esc(x.upstream_url)}" target="_blank" rel="noopener">${esc(x.upstream)}</a>` : esc(x.upstream)}` : ""}`;
-  const links = x.repo ? `<div class="links">
-      ${x.release_url ? `<a class="ext" href="${esc(x.release_url)}" target="_blank" rel="noopener">Release ${esc(x.target_tag)}</a>` : ""}
-      <a class="ext" href="${esc(x.releases_url)}" target="_blank" rel="noopener">All releases</a>
-      <a class="ext" href="${esc(x.repo_url)}" target="_blank" rel="noopener">${esc(x.repo)}</a>
-    </div>` : "";
+  const ext = (href, text) => `<a class="ext" href="${esc(href)}" target="_blank" rel="noopener">${text}</a>`;
+  const linkList = [
+    x.source === "apt" ? `<span class="muted small">apt package${x.origin ? ` from ${esc(x.origin)}` : ""}</span>` : "",
+    x.release_url ? ext(x.release_url, `Release ${esc(x.target_tag)}`) : "",
+    x.repo ? ext(x.releases_url, "All releases") + ext(x.repo_url, esc(x.repo)) : "",
+    x.homepage && !(x.repo_url && x.homepage.startsWith(x.repo_url)) ? ext(x.homepage, "Project site") : "",
+    x.package_url ? ext(x.package_url, `${esc(x.origin)} package`) : "",
+  ].join("");
+  const links = linkList ? `<div class="links">${linkList}</div>` : "";
   let news = "";
   if (x.state === "outdated" && x.repo) {
     const key = notesKey(x);
     const n = dr.notes[key];
-    if (!n) news = `<button class="small" data-notes="${esc(key)}">What's new since ${esc(x.installed)}?</button>`;
+    if (!n) news = `<button class="small" data-notes="${esc(key)}">What's new since ${esc(x.notes_installed || x.installed)}?</button>`;
     else if (n === "loading") news = `<div class="whatsnew muted small">Loading releases…</div>`;
     else if (n.error) news = `<div class="whatsnew err small">${esc(n.error)}</div>`;
     else {
@@ -963,7 +970,7 @@ async function loadNotes(key) {
   dr.notes[key] = "loading";
   renderDetails(false);
   try {
-    const q = new URLSearchParams({ forge: x.forge, repo: x.repo, installed: x.installed, target: x.target_tag || x.target });
+    const q = new URLSearchParams({ forge: x.forge, repo: x.repo, installed: x.notes_installed || x.installed, target: x.target_tag || x.notes_target || x.target });
     dr.notes[key] = await api(`/api/releases?${q}`);
   } catch (e) {
     dr.notes[key] = { error: e.message };

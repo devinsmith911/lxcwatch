@@ -13,7 +13,7 @@ from .probe import parse_probe, probe_script
 from .release import debian_stable, release_info
 from .ssh import SSH
 from . import __version__
-from .upstream import FRESH_SINCE, Upstream, build_components, parse_checks, version_tuple
+from .upstream import FRESH_SINCE, Upstream, build_components, package_components, parse_checks, version_tuple
 
 log = logging.getLogger(__name__)
 
@@ -178,6 +178,9 @@ class Cluster:
             except httpx.HTTPError as e:
                 info["upstream_errors"].append(f"{c.repo}: {e}")
         info["components"] = build_components(checks, info["versions"], latest)
+        info["components"] += package_components(
+            info.pop("app_packages", []), [info["script"], info["slug"], info.get("script_app")],
+            info["packages"], info["components"], info.get("os_id"), info.get("os_codename"))
         info["release"] = release_info(info, await debian_stable(self.upstream.http, self.upstream._cache))
         info["script_state"] = await self.upstream.script_state(info["slug"]) if info["slug"] else None
 
