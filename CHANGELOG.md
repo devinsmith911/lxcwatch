@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 (2026-10-29)
 
 ### Added
 - Apps installed with apt (Jellyfin, Plex, Grafana, cloudflared and others from a vendor repo, or a distro package named after the app) now show their installed version, any pending upgrade, and links to the project. Where the source repo is known, "What's new" shows the release notes in between.
