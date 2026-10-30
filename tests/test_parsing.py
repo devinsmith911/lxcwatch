@@ -457,3 +457,49 @@ def test_probe_reports_app_packages():
     got = {p["name"]: p["origin"] for p in info["app_packages"]}
     assert got == {"base-files": "Example", "bash": None}, r.stdout + r.stderr
     assert info["os_codename"] == "trixie"
+
+
+CLOUDFLARE_SIG = (
+    "W: An error occurred during the signature verification. The repository is not updated and the previous index files will be used. "
+    "OpenPGP signature verification failed: https://pkg.cloudflare.com/cloudflared bookworm InRelease: Sub-process /usr/bin/sqv returned an error code (1)\n"
+    "W: Failed to fetch https://pkg.cloudflare.com/cloudflared/dists/bookworm/InRelease  Sub-process /usr/bin/sqv returned an error code (1), "
+    "error message is: Signing key on FBA8C0EE63617C5EED695C43254B391D8CACCBF8 is not bound\n"
+    "W: Some index files failed to download. They have been ignored, or old ones used instead.\n"
+)
+
+
+def test_refresh_errors_from_apt_and_apk():
+    info = parse_probe("".join(f"pkgwarn:{l}\n" for l in CLOUDFLARE_SIG.splitlines()) + "probe_ok=1\n")
+    assert not info["pkg_refresh_failed"]  # apt-get update still exited 0
+    assert info["pkg_refresh_errors"] == [{"repo": "https://pkg.cloudflare.com/cloudflared", "reason": "signature check failed"}]
+    assert len(info["pkg_warnings"]) == 3
+    info = parse_probe("pkg_refresh_failed=1\npkgwarn:W: Failed to fetch http://deb.example.org/debian/dists/trixie/InRelease  "
+                       "Could not resolve 'deb.example.org'\n"
+                       "pkgwarn:WARNING: fetching https://dl-cdn.alpinelinux.org/alpine/v3.22/main: network error\nprobe_ok=1\n")
+    assert info["pkg_refresh_failed"]
+    assert info["pkg_refresh_errors"] == [
+        {"repo": "http://deb.example.org/debian", "reason": "DNS lookup failed"},
+        {"repo": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main", "reason": "couldn't connect"},
+    ]
+
+
+@pytest.mark.skipif(not DOCKER, reason="docker not available")
+def test_probe_reports_unreachable_repo():
+    setup = "echo 'deb [trusted=yes] http://127.0.0.1:9/debian trixie main' > /etc/apt/sources.list.d/broken.list\n"
+    r = subprocess.run(["docker", "run", "--rm", "-i", "debian:13", "sh", "-c", setup + probe_script(True)],
+                       capture_output=True, text=True, timeout=300)
+    info = parse_probe(r.stdout)
+    assert info["probe_ok"], r.stderr
+    assert info["pkg_refresh_errors"] == [{"repo": "http://127.0.0.1:9/debian", "reason": "couldn't connect"}], info["pkg_warnings"]
+
+
+def test_stored_self_update_ignores_the_running_version(tmp_path, monkeypatch):
+    import json
+    from lxcwatch import cluster
+    from lxcwatch.db import DB
+    db = DB(str(tmp_path / "t.db"))
+    monkeypatch.setattr(cluster, "__version__", "1.2.0")
+    db.set("self_update", json.dumps({"current": "1.1.1", "version": "1.2.0", "url": "u"}))
+    assert cluster.stored_self_update(db) is None
+    db.set("self_update", json.dumps({"current": "1.1.1", "version": "1.3.0", "url": "u"}))
+    assert cluster.stored_self_update(db) == {"current": "1.2.0", "version": "1.3.0", "url": "u"}

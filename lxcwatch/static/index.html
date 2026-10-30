@@ -482,10 +482,10 @@ const notScript = c => !!c.os && !c.script;
 // A community-script (or not yet scanned) container whose app version we can't tell.
 const isUnknown = c => c.status === "running" && !notScript(c) && (!c.scanned_at || !c.os
   || (c.components.length > 0 && c.components.every(x => x.state === "unknown" || x.state === "untracked")));
-const rowState = c => c.status !== "running" ? "stopped" : c.pkg_security ? "security" : needsUpdate(c) ? "outdated" : isUnknown(c) || notScript(c) ? "unknown" : "current";
+const rowState = c => c.status !== "running" ? "stopped" : c.pkg_security ? "security" : needsUpdate(c) ? "outdated" : isUnknown(c) || notScript(c) || c.pkg_stale ? "unknown" : "current";
 // community-scripts reports removed scripts as state "deleted" or found: false with a message.
 const retired = c => !!c.script_state && (c.script_state.state === "deleted" || (c.script_state.found === false && !!c.script_state.message));
-const problem = c => c.error || c.failures?.some(f => !f.superseded) || c.upstream_errors.length || c.components.some(x => x.pending) || retired(c) || c.last_job?.status === "failed";
+const problem = c => c.error || c.failures?.some(f => !f.superseded) || c.upstream_errors.length || c.components.some(x => x.pending) || retired(c) || c.last_job?.status === "failed" || c.pkg_stale;
 
 function visible() {
   const q = state.q.toLowerCase();
@@ -531,8 +531,9 @@ function pkgHtml(c) {
   if (!c.pkgmgr) return `<span class="muted dash">—</span>`;
   const restart = (c.restart_needed ? ` <span class="badge warn" title="${esc(c.stale_procs.length ? `Still running replaced code: ${c.stale_procs.join(", ")}` : "The container asks for a reboot")}">restart needed</span>` : "")
     + (c.release ? ` <span class="badge info" title="Release upgrade available, see Details">Debian ${c.release.target} available</span>` : "");
-  if (!c.pkg_count) return `<span class="badge ok">up to date</span>${restart}`;
-  return `<span class="badge warn">${c.pkg_count} pending</span>${c.pkg_security ? ` <span class="badge bad">${c.pkg_security} security</span>` : ""}${restart}`;
+  const stale = c.pkg_stale ? ` <span class="badge bad" title="Package lists couldn't be refreshed${c.pkg_refresh_errors?.length ? `: ${esc(c.pkg_refresh_errors.map(e => e.repo).join(", "))}` : ""}. See Details.">lists stale</span>` : "";
+  if (!c.pkg_count) return `${c.pkg_stale ? "" : `<span class="badge ok">up to date</span>`}${stale}${restart}`;
+  return `<span class="badge warn">${c.pkg_count} pending</span>${c.pkg_security ? ` <span class="badge bad">${c.pkg_security} security</span>` : ""}${stale}${restart}`;
 }
 
 function rowHtml(c) {
@@ -941,9 +942,20 @@ function renderDetails(first) {
       <span><b>Debian ${c.release.current} (${esc(c.release.from)}) → ${c.release.target} (${esc(c.release.to)})</b> is available${c.release.target < c.release.stable ? `, one step towards Debian ${c.release.stable}` : ""}.</span>
       <button class="primary" data-release="${c.vmid}" ${c.status !== "running" || c.job ? "disabled" : ""}>Upgrade to Debian ${c.release.target}…</button></div>
       <div class="muted" style="margin-top:4px">Runs pre-checks first. Switches the official Debian sources, upgrades every package and restarts the container.</div></div>` : ""}
-    <h3>Pending packages (${c.pkg_count})</h3>${pk}
+    <h3>Pending packages (${c.pkg_count})</h3>${c.pkg_stale ? staleHtml(c) : ""}${pk}
     <div class="sectionhead"><h3>Snapshots</h3><button data-snapshot="${c.vmid}" ${c.job ? "disabled" : ""}>Take snapshot…</button></div>${snaps}
     <h3>Job history</h3>${jobs}`;
+}
+
+function staleHtml(c) {
+  const repos = c.pkg_refresh_errors || [];
+  return `<div class="whatsnew small" style="border-color:color-mix(in srgb, var(--bad) 35%, var(--border));background:color-mix(in srgb, var(--bad) 6%, var(--panel))">
+    <b>${repos.length ? `${repos.length === 1 ? "A package source" : `${repos.length} package sources`} couldn't be refreshed` : "The package lists couldn't be refreshed"}</b>,
+    so the container may have updates that aren't listed here.
+    ${repos.length ? `<div class="list" style="margin-top:6px">${repos.map(r => `<div><code>${esc(r.repo)}</code><span class="badge bad">${esc(r.reason)}</span></div>`).join("")}</div>` : ""}
+    ${repos.some(r => r.reason === "signature check failed") ? `<div class="muted" style="margin-top:6px">A failed signature check usually means the repo's signing key changed or uses SHA1, which current Debian rejects. Download the vendor's current key over the keyring file the source's <code>signed-by</code> points to.</div>` : ""}
+    ${c.pkg_warnings?.length ? `<details style="margin-top:6px"><summary class="muted">apt output</summary><pre class="log" style="max-height:200px">${esc(c.pkg_warnings.join("\n"))}</pre></details>` : ""}
+  </div>`;
 }
 
 const notesKey = x => `${x.forge}|${x.repo}|${x.installed}|${x.target}`;

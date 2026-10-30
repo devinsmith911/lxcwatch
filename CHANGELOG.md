@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Package sources that fail to refresh (for example a vendor repo whose signing key changed) are now reported. The container shows "lists stale" and appears under Problems, and Details names each failing source and why. Before, it looked up to date.
+- After upgrading lxcwatch, the header no longer keeps offering the version you just installed.
+
 ## 1.2.0 (2026-10-29)
 
 ### Added

@@ -5,6 +5,8 @@ containers alike. It only reads state; the optional package index refresh
 (apt-get update / apk update) is the one thing it changes.
 """
 
+import re
+
 from .release import PROBE_DEBIAN
 
 # Processes still running code that an upgrade replaced: their memory maps
@@ -70,7 +72,11 @@ for f in /root/.install-*.failed; do
 done
 if command -v apt-get >/dev/null 2>&1; then
   echo "pkgmgr=apt"
-  if [ "$REFRESH" = 1 ]; then apt-get update -qq >/dev/null 2>&1 || echo "pkg_refresh_failed=1"; fi
+  # apt-get update exits 0 when only some repos fail, so keep its warnings.
+  if [ "$REFRESH" = 1 ]; then
+    out=$(apt-get update -qq 2>&1) || echo "pkg_refresh_failed=1"
+    printf '%s\n' "$out" | grep -E '^(W|E|Err):' | head -n 20 | cut -c1-600 | sed 's/^/pkgwarn:/'
+  fi
   apt-get -s -o Debug::NoLocking=1 dist-upgrade 2>/dev/null | awk '/^Inst /{
     name=$2; old="-"; new=$3
     if ($3 ~ /^\[/) { old=$3; gsub(/\[|\]/, "", old); new=$4 }
@@ -107,7 +113,10 @@ if command -v apt-get >/dev/null 2>&1; then
       if (m) print "apppkg:" $2 "\t" $3 "\t" (($2 in tp) ? tp[$2] : "-") "\t" $4 }'
 elif command -v apk >/dev/null 2>&1; then
   echo "pkgmgr=apk"
-  if [ "$REFRESH" = 1 ]; then apk update -q >/dev/null 2>&1 || echo "pkg_refresh_failed=1"; fi
+  if [ "$REFRESH" = 1 ]; then
+    out=$(apk update -q 2>&1) || echo "pkg_refresh_failed=1"
+    printf '%s\n' "$out" | grep -E '^(WARNING|ERROR):' | head -n 20 | cut -c1-600 | sed 's/^/pkgwarn:/'
+  fi
   apk version -l '<' 2>/dev/null | awk 'NR>1 && NF>=3 { print "pkg:" $1 " - " $3 " 0" }'
 else
   echo "pkgmgr=unknown"
@@ -124,6 +133,36 @@ def probe_script(refresh: bool) -> str:
             .replace("__DEBIAN__", PROBE_DEBIAN))
 
 
+# "W: Failed to fetch <url>  <reason>" (apt) and "WARNING: fetching <url>: <reason>" (apk).
+FETCH_FAILED_RE = re.compile(r"^(?:W|E|Err):\s*Failed to fetch\s+(\S+)\s*(.*)$|^(?:WARNING|ERROR):\s*(?:fetching\s+)?(https?://\S+?):?\s+(.*)$")
+
+
+def _reason(text: str) -> str:
+    t = text.lower()
+    if any(k in t for k in ("signature", "no_pubkey", "expkeysig", "keyexpired", "sqv", "gpg", "is not signed", "untrusted")):
+        return "signature check failed"
+    if "404" in t or "not found" in t:
+        return "not found (404)"
+    if "could not resolve" in t or "temporary failure resolving" in t or "dns" in t:
+        return "DNS lookup failed"
+    if any(k in t for k in ("connect", "timed out", "unreachable", "network error")):
+        return "couldn't connect"
+    return text.strip()[:120] or "failed"
+
+
+def refresh_errors(warnings: list[str]) -> list[dict]:
+    """Repos whose package lists couldn't be refreshed, from apt/apk warnings."""
+    out: dict[str, str] = {}
+    for line in warnings:
+        m = FETCH_FAILED_RE.match(line)
+        if not m:
+            continue
+        url, rest = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        repo = url.split("/dists/", 1)[0] if "/dists/" in url else url.rsplit("/", 1)[0] if url.endswith(("InRelease", "Release", "APKINDEX.tar.gz")) else url
+        out.setdefault(repo, _reason(rest))
+    return [{"repo": r, "reason": why} for r, why in out.items()]
+
+
 def parse_probe(text: str) -> dict:
     info: dict = {
         "os": None,
@@ -135,6 +174,8 @@ def parse_probe(text: str) -> dict:
         "pkgmgr": None,
         "packages": [],
         "pkg_refresh_failed": False,
+        "pkg_warnings": [],  # W:/E: lines from apt-get update (or apk's WARNING/ERROR)
+        "pkg_refresh_errors": [],  # [{repo, reason}]
         "reboot_required": False,
         "stale_procs": [],
         "failures": [],  # [{file, code, at, errinfo}]
@@ -158,6 +199,8 @@ def parse_probe(text: str) -> dict:
         elif line.startswith("aptsrc:"):
             path, _, src = line[7:].partition(":")
             info["apt_sources"].append({"file": path, "line": src.strip()})
+        elif line.startswith("pkgwarn:"):
+            info["pkg_warnings"].append(line[8:])
         elif line.startswith("apppkg:"):
             name, version, origin, homepage = (line[7:].split("\t") + ["", "", ""])[:4]
             if name and version:
@@ -206,4 +249,5 @@ def parse_probe(text: str) -> dict:
                 info[key] = value == "1"
             elif key in info:
                 info[key] = value or None
+    info["pkg_refresh_errors"] = refresh_errors(info["pkg_warnings"])
     return info

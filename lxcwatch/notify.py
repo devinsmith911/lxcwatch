@@ -7,6 +7,7 @@ import logging
 import httpx
 
 from .config import Config
+from .cluster import stored_self_update
 from .db import DB
 
 log = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ def collect(cfg: Config, db: DB) -> tuple[list[dict], list[str]]:
     lines: list[dict] = []
     keys: list[str] = []
     # lxcwatch's own updates are announced whatever NOTIFY_PACKAGES says.
-    own = json.loads(db.get("self_update") or "null")
+    own = stored_self_update(db)
     if own and not db.was_notified(f"self:{own['version']}"):
         lines.append({"text": f"lxcwatch {own['version']} is available (you have {own['current']})",
                       "url": own.get("url"), "vmid": None})

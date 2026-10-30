@@ -21,6 +21,19 @@ SNAPSHOT_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,39}$")
 PER_NODE_PARALLEL = 4
 
 
+def stored_self_update(db: DB) -> dict | None:
+    """The newer lxcwatch release found by the last check, if it's still newer.
+
+    After an upgrade the stored entry can name the version now running until
+    the next check, so compare against the running version here.
+    """
+    found = json.loads(db.get("self_update") or "null")
+    mine, theirs = version_tuple(__version__), version_tuple((found or {}).get("version"))
+    if not (mine and theirs and theirs > mine):
+        return None
+    return {**found, "current": __version__}
+
+
 class Cluster:
     def __init__(self, cfg: Config, ssh: SSH, db: DB, upstream: Upstream):
         self.cfg, self.ssh, self.db, self.upstream = cfg, ssh, db, upstream

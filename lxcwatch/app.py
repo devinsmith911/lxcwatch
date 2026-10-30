@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from . import __version__, config, notify
 from .auth import COOKIE, Auth
 from .batch import BatchError, Batches
-from .cluster import Cluster
+from .cluster import Cluster, stored_self_update
 from .db import DB
 from .jobs import CLEAR_FAILURES, JobError, Jobs
 from .release import HOST_CHECK, container_checks, host_checks
@@ -87,6 +87,8 @@ async def scheduler() -> None:
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     jobs.resume()
+    # Refresh lxcwatch's own update notice now rather than at the next scan.
+    jobs._spawn(cluster.check_self_update())
     task = asyncio.create_task(scheduler())
     yield
     task.cancel()
@@ -238,6 +240,10 @@ def _summary(ct: dict) -> dict:
         "pkg_count": len(pkgs),
         "pkg_security": sum(1 for p in pkgs if p["security"]),
         "pkgmgr": info.get("pkgmgr"),
+        # Package lists that couldn't be refreshed: "up to date" may be stale.
+        "pkg_stale": bool(info.get("pkg_refresh_failed") or info.get("pkg_refresh_errors")),
+        "pkg_refresh_errors": info.get("pkg_refresh_errors", []),
+        "pkg_warnings": info.get("pkg_warnings", []),
         "reboot_required": info.get("reboot_required", False),
         "stale_procs": info.get("stale_procs", []),
         "release": info.get("release"),
@@ -266,7 +272,7 @@ async def containers():
             "next_at": next_scan_at(),
         },
         "batch": batches.current,
-        "self_update": json.loads(db.get("self_update") or "null"),
+        "self_update": stored_self_update(db),
         "version": __version__,
         "connection": {
             "host": cfg.pve_host,
