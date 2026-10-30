@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (2026-10-30)
 
 ### Fixed
 - Package sources that fail to refresh (for example a vendor repo whose signing key changed) are now reported. The container shows "lists stale" and appears under Problems, and Details names each failing source and why. Before, it looked up to date.
