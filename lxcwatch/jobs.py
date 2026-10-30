@@ -52,6 +52,23 @@ OS_CMD = "sh -c " + shlex.quote(
 )
 
 
+PACKAGE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9+._-]*$")
+
+
+def os_cmd(packages: list[str] | None = None) -> str:
+    """Package update command: everything, or only `packages` (and what they need)."""
+    if not packages:
+        return OS_CMD
+    names = " ".join(packages)
+    return "sh -c " + shlex.quote(
+        "if command -v apt-get >/dev/null 2>&1; then "
+        "export DEBIAN_FRONTEND=noninteractive; apt-get update && "
+        "apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install --only-upgrade " + names + "; "
+        "elif command -v apk >/dev/null 2>&1; then apk -U upgrade " + names + "; "
+        "else echo 'no supported package manager'; exit 1; fi"
+    )
+
+
 def clean_line(raw: bytes) -> str:
     text = ANSI_RE.sub("", raw.decode(errors="replace"))
     parts = [p for p in text.split("\r") if p.strip()]
@@ -59,7 +76,8 @@ def clean_line(raw: bytes) -> str:
 
 
 def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target: str | None,
-                token: bool = False, restart: str = "never", description: str | None = None) -> str:
+                token: bool = False, restart: str = "never", description: str | None = None,
+                packages: list[str] | None = None) -> str:
     q = shlex.quote
     token_file = f"{LOGDIR}/{job_id}.token"
     lines = [
@@ -93,7 +111,8 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
             "fi",
         ]
     elif kind == "os":
-        lines += [f"echo '[lxcwatch] updating packages'", f"pct exec {vmid} -- {OS_CMD} </dev/null", "rc=$?"]
+        what = f"updating {len(packages)} package{'s' if len(packages) != 1 else ''}: {' '.join(packages)}" if packages else "updating packages"
+        lines += [f"echo {q('[lxcwatch] ' + what)}", f"pct exec {vmid} -- {os_cmd(packages)} </dev/null", "rc=$?"]
         if restart == "always":
             lines += [
                 "if [ $rc -eq 0 ]; then",
@@ -176,7 +195,7 @@ class Jobs:
         task.add_done_callback(self.tasks.discard)
 
     def start(self, vmid: int, kind: str, snapshot: bool, target: str | None = None, restart: str = "never",
-              description: str | None = None) -> str:
+              description: str | None = None, packages: list[str] | None = None, auto: bool = False) -> str:
         if kind not in KINDS:
             raise JobError(f"unknown job kind {kind!r}")
         if restart not in RESTART_MODES:
@@ -204,12 +223,14 @@ class Jobs:
                 raise JobError(f"description is longer than {MAX_DESCRIPTION} characters")
         if kind == "rollback" and not (target and SNAPSHOT_NAME_RE.match(target)):
             raise JobError("rollback needs a valid snapshot name")
+        if packages is not None and (kind != "os" or not packages or not all(PACKAGE_NAME_RE.match(p) for p in packages)):
+            raise JobError("a package list needs a package update and valid package names")
         stamp = time.strftime("%Y%m%d-%H%M%S")
         job_id = f"{stamp}-{vmid}-{secrets.token_hex(2)}"
         snap = f"{AUTO_SNAPSHOT_PREFIX}{stamp}" if snapshot and kind in ("app", "os", "release") else None
-        self.db.create_job(job_id, vmid, row["node"], kind, snap or target)
+        self.db.create_job(job_id, vmid, row["node"], kind, snap or target, auto=auto)
         self.active[vmid] = job_id
-        self._spawn(self._run(job_id, vmid, row["node"], kind, snap, target, restart if kind == "os" else "never", description))
+        self._spawn(self._run(job_id, vmid, row["node"], kind, snap, target, restart if kind == "os" else "never", description, packages))
         return job_id
 
     def resume(self) -> None:
@@ -236,13 +257,14 @@ class Jobs:
             self._fail(job["id"], job["vmid"], e)
 
     async def _run(self, job_id: str, vmid: int, node: str, kind: str, snap: str | None, target: str | None, restart: str,
-                   description: str | None = None) -> None:
+                   description: str | None = None, packages: list[str] | None = None) -> None:
         try:
             async with self.sem:
                 self.db.update_job(job_id, status="running")
                 addr = await self.cluster.resolve(node)
                 token = kind == "app" and bool(self.cfg.github_token)
-                script = node_script(job_id, vmid, kind, snap, target, token=token, restart=restart, description=description)
+                script = node_script(job_id, vmid, kind, snap, target, token=token, restart=restart, description=description,
+                                     packages=packages)
                 base = f"{LOGDIR}/{job_id}"
                 prep = f"mkdir -p {LOGDIR} && chmod 700 {LOGDIR}"
                 if token:

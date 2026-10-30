@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import __version__, config, notify
+from . import __version__, auto, config, notify
 from .auth import COOKIE, Auth
 from .batch import BatchError, Batches
 from .cluster import Cluster, stored_self_update
@@ -39,6 +39,25 @@ STATIC = os.path.join(os.path.dirname(__file__), "static")
 async def full_scan(fresh: bool = False) -> None:
     await cluster.scan_all(fresh)
     await notify.send(cfg, db, upstream.http)
+
+
+def summaries() -> list[dict]:
+    policies = db.auto_policies()
+    last = (autoupd.last_run() if autoupd else None) or {}
+    return [_summary(ct, policies, last) for ct in db.containers()]
+
+
+autoupd = auto.AutoUpdater(cfg, db, cluster, jobs, batches, upstream.http, summaries, lambda: full_scan(fresh=True))
+
+
+async def auto_loop() -> None:
+    await asyncio.sleep(10)
+    while True:
+        try:
+            await autoupd.tick()
+        except Exception:
+            log.exception("automatic update check failed")
+        await asyncio.sleep(30)
 
 
 # Scheduled scans run one interval after the last scan (scheduled, manual or
@@ -90,8 +109,10 @@ async def lifespan(app: FastAPI):
     # Refresh lxcwatch's own update notice now rather than at the next scan.
     jobs._spawn(cluster.check_self_update())
     task = asyncio.create_task(scheduler())
+    auto_task = asyncio.create_task(auto_loop())
     yield
     task.cancel()
+    auto_task.cancel()
     await upstream.close()
 
 
@@ -215,8 +236,13 @@ def last_success_at(info: dict, vmid: int) -> float:
     return max(times)
 
 
-def _summary(ct: dict) -> dict:
+def _summary(ct: dict, policies: dict[int, dict] | None = None, last_run: dict | None = None) -> dict:
     info = ct["info"] or {}
+    pol = (policies if policies is not None else db.auto_policies()).get(ct["vmid"]) or {}
+    if last_run is None:
+        last_run = autoupd.last_run() or {}
+    last_auto = next((s for s in (last_run or {}).get("steps", [])[::-1] if s["vmid"] == ct["vmid"]), None) \
+        or next(({"status": "skipped", "note": s["reason"]} for s in (last_run or {}).get("skipped", []) if s["vmid"] == ct["vmid"]), None)
     ok_at = last_success_at(info, ct["vmid"]) if info.get("failures") else 0
     # A failure followed by a successful run is history, not a problem.
     failures = [{**f, "superseded": bool(f.get("at") and ok_at > f["at"])} for f in info.get("failures", [])]
@@ -240,6 +266,14 @@ def _summary(ct: dict) -> dict:
         "pkg_count": len(pkgs),
         "pkg_security": sum(1 for p in pkgs if p["security"]),
         "pkgmgr": info.get("pkgmgr"),
+        "lxcwatch_host": bool(info.get("lxcwatch_host")),
+        "auto": {
+            "policy": pol.get("policy", "off"),
+            "rollback": bool(pol.get("rollback")),
+            "paused": autoupd.paused(ct["vmid"], pol) if pol.get("paused_at") else False,
+            "paused_reason": pol.get("paused_reason"),
+            "last": last_auto,
+        },
         # Package lists that couldn't be refreshed: "up to date" may be stale.
         "pkg_stale": bool(info.get("pkg_refresh_failed") or info.get("pkg_refresh_errors")),
         "pkg_refresh_errors": info.get("pkg_refresh_errors", []),
@@ -263,7 +297,8 @@ def _summary(ct: dict) -> dict:
 async def containers():
     last = db.get("last_scan")
     return {
-        "containers": [_summary(ct) for ct in db.containers()],
+        "containers": summaries(),
+        "auto": _auto_status(),
         "scan": {
             "running": cluster.scan_lock.locked(),
             "last": json.loads(last) if last else None,
@@ -316,6 +351,60 @@ class BatchRequest(BaseModel):
     restart: str = "auto"
     stop_on_failure: bool = False
     only: dict[int, list[str]] | None = None  # per-container kinds
+
+
+def _auto_status() -> dict:
+    s = auto.load_settings(db)
+    return {"enabled": s["enabled"], "next_at": auto.next_window(time.time(), s), "running": autoupd.running,
+            "last_run": autoupd.last_run(), "settings": s}
+
+
+class SettingsRequest(BaseModel):
+    auto: dict
+
+
+@app.get("/api/settings")
+async def get_settings():
+    return {"auto": auto.load_settings(db), "server_time": time.time(), "timezone": time.strftime("%Z"),
+            "utc_offset": time.strftime("%z"), "status": _auto_status()}
+
+
+@app.put("/api/settings")
+async def put_settings(req: SettingsRequest):
+    try:
+        s = auto.validate_settings(req.auto)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    db.set("auto_settings", json.dumps(s))
+    return await get_settings()
+
+
+class AutoPolicyRequest(BaseModel):
+    vmids: list[int]
+    policy: str
+    rollback: bool | None = None  # None keeps each container's current setting
+
+
+@app.post("/api/auto/policy")
+async def set_auto_policy(req: AutoPolicyRequest):
+    if req.policy not in auto.POLICIES:
+        raise HTTPException(400, f"policy must be one of {', '.join(auto.POLICIES)}")
+    known = {c["vmid"] for c in db.containers()}
+    current = db.auto_policies()
+    for vmid in req.vmids:
+        if vmid not in known:
+            raise HTTPException(404, f"CT {vmid} not found")
+        rollback = req.rollback if req.rollback is not None else bool((current.get(vmid) or {}).get("rollback"))
+        db.set_auto_policy(vmid, req.policy, rollback)
+    return {"ok": True}
+
+
+@app.post("/api/containers/{vmid}/auto/resume")
+async def resume_auto(vmid: int):
+    if not db.container(vmid):
+        raise HTTPException(404, "container not found")
+    db.pause_auto(vmid, None)
+    return {"ok": True}
 
 
 @app.post("/api/batch")

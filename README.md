@@ -17,7 +17,7 @@ It's built for containers created with the [Proxmox VE community-scripts](https:
 - **Update all.** It updates apps, packages or both across every container that needs it, one container at a time.
 - **Snapshots and rollback.** It can take a snapshot before any update, or whenever you like, and roll back with one click.
 - **Notifications.** New updates can go to ntfy, Pushover or a webhook.
-- **Nothing happens on its own.** Scans run on a schedule, but updates only run when you start them.
+- **Automatic updates, if you want them.** Off by default. Turn them on in **Settings**, pick a maintenance window, and choose per container what gets installed: security packages, all packages, or the app and packages.
 
 ## Install
 
@@ -91,7 +91,14 @@ A GitHub token only needs public read access: a fine-grained token with no extra
 - **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph) and are off by default; tick "Take a snapshot first" when updating. If a snapshot can't be taken, the update doesn't run. You can also take a snapshot any time with **Take snapshot…** in a container's Details panel. `LXCWATCH_KEEP_SNAPSHOTS` only cleans up the automatic `lxcwatch-*` snapshots, so manual ones stay until you delete them. Rolling back restores the whole container, including app data written since the snapshot.
 - **Restarts:** containers share the host's kernel, so package updates never need a reboot for a new kernel. Services do keep running the old libraries until they restart, and lxcwatch shows **restart needed** when that's the case. Package updates can restart the container afterwards: only if needed (the default), always, or never.
 - **Debian release upgrades** run one major version at a time from a container's Details panel, never as part of Update all. Before starting, lxcwatch checks disk space, held packages, third-party repositories and whether your Proxmox host supports the new version. Only the official Debian sources are switched; third-party repositories stay on the old release. A snapshot is ticked by default; if an upgrade fails part-way, roll back to it.
-- **Apps installed from apt repositories** (Jellyfin, Pi-hole, AdGuard and similar) have no separate app version; their updates show up under Packages.
+- **Apps installed with apt** (Jellyfin, Plex, Grafana, cloudflared and similar) show the version of their package, found from its vendor repo or its name. Release notes are linked when the package's source repository is known.
+- **Automatic updates** run only in the maintenance window set in **Settings** (in the server's time zone), and only for containers you opt in from their Details panel or by selecting several and choosing **Automatic updates…**. A run starts with a fresh scan, then goes one container at a time:
+  - app updates always take a snapshot first, and package-only updates do too unless you turn that off;
+  - new app releases wait a few days (3 by default) before they're installed; package updates don't wait;
+  - containers that are stopped, busy, have a failed or unfinished update, a retired script or package lists that couldn't be refreshed are skipped;
+  - a failed update pauses automatic updates for that container until you resume it or a manual update succeeds, and can roll back to the snapshot if you opted in;
+  - Debian release upgrades never run automatically, and in the container lxcwatch itself runs in, its own package is left alone and the container isn't restarted;
+  - when the window closes, the update in progress finishes and the rest waits for the next window. A summary goes to your notification channels after each run that changed something.
 - **Fresh data:** scheduled scans cache release information and scripts for a few hours to stay within GitHub's rate limit. **Scan now** and a container's **Rescan** always fetch fresh data, once per repository per scan.
 - **Activity** in the header lists recent jobs across all containers, with their results and logs.
 - **"Untracked"** means lxcwatch found a version file that the app's script doesn't refer to. **"Unknown"** means the installed or available version couldn't be determined.

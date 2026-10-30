@@ -19,13 +19,14 @@ class FakeJobs:
 
     def __init__(self, fail=()):
         self.fail = set(fail)
-        self.order, self.active, self.max_active = [], 0, 0
+        self.order, self.calls, self.active, self.max_active = [], [], 0, 0
 
     def busy(self, vmid):
         return False
 
-    def start(self, vmid, kind, snapshot, restart="never"):
+    def start(self, vmid, kind, snapshot, restart="never", packages=None, auto=False):
         self.order.append((vmid, kind))
+        self.calls.append({"vmid": vmid, "kind": kind, "snapshot": snapshot, "restart": restart, "packages": packages, "auto": auto})
         return f"{vmid}-{kind}"
 
     async def wait(self, job_id):

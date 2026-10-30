@@ -9,7 +9,8 @@ Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built aroun
 - `lxcwatch/probe.py`: the POSIX `sh` probe run in each container via `pct exec`, and its parser. It must keep working on Debian, Ubuntu and Alpine (busybox).
 - `lxcwatch/upstream.py`: parses `check_for_*_release` calls in community-scripts `ct/<app>.sh`, fetches forge releases, caches them, and builds the component list.
 - `lxcwatch/jobs.py`: updates, restarts, rollbacks, snapshots and release upgrades. Each job is a bash script started detached on the node (`setsid nohup`), logging to `/var/log/lxcwatch/<id>.log`, followed over SSH until a `__LXCWATCH_EXIT__ <rc>` marker. After a restart lxcwatch re-attaches (`Jobs.resume`).
-- `lxcwatch/batch.py`: Update all, one job at a time.
+- `lxcwatch/batch.py`: Update all, one job at a time; also runs automatic-update plans.
+- `lxcwatch/auto.py`: automatic updates: settings (kv `auto_settings`), the maintenance window, planning per container policy (`auto_policy` table), pausing after failures, the run summary.
 - `lxcwatch/release.py`: Debian release upgrades (pre-checks, source switching).
 - `lxcwatch/notify.py`: ntfy, Pushover and webhook notifications, each item once (the `notified` table).
 - `lxcwatch/auth.py`: signed session cookies and the login lockout; basic auth still works for API clients.
@@ -48,6 +49,6 @@ packaging/build-deb.sh               # local .deb, versioned <last tag>+dev<n>.<
 - Keep the README written for outside users: no maintainer or push instructions (those belong in `RELEASING.md`).
 - For UI changes, render screenshots (desktop and mobile, light and dark) and check them before pushing. When the user asks to see them first, wait for approval before pushing.
 - UI style: no coloured stripes down the side of cards or rows. Use tints, status dots or badges. Show update buttons only when there's something to update. Say "Update packages", not "Update OS".
-- Defaults stay conservative: nothing updates on its own, snapshots are opt-in for updates (but ticked by default for Debian release upgrades), and restarts after package updates default to "only if needed".
+- Defaults stay conservative: automatic updates are off globally and per container until the user opts in, snapshots are opt-in for updates (but ticked by default for Debian release upgrades), and restarts after package updates default to "only if needed".
 - Use `info@dsmithtech.com` for any contact or maintainer address in the repo, never a personal address.
 - CI runs on a self-hosted runner in `debian:13` job containers without node, so workflows use plain `git clone` instead of `actions/checkout`. Publishing needs the `PACKAGES_TOKEN` secret. CrowdSec in front of the self-hosted git server has blocked large uploads before.

@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS notified (
     key TEXT PRIMARY KEY,
     at REAL NOT NULL
 );
+-- Automatic updates per container: policy is off/security/packages/app.
+CREATE TABLE IF NOT EXISTS auto_policy (
+    vmid INTEGER PRIMARY KEY,
+    policy TEXT NOT NULL DEFAULT 'off',
+    rollback INTEGER NOT NULL DEFAULT 0,
+    paused_at REAL,
+    paused_reason TEXT
+);
+-- When lxcwatch first saw an update to a version (for the minimum-age wait).
+CREATE TABLE IF NOT EXISTS first_seen (
+    key TEXT PRIMARY KEY,
+    at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -54,6 +67,10 @@ class DB:
             cols = {r[1] for r in self.conn.execute("PRAGMA table_info(containers)")}
             if "started_at" not in cols:
                 self.conn.execute("ALTER TABLE containers ADD COLUMN started_at REAL")
+                self.conn.commit()
+            cols = {r[1] for r in self.conn.execute("PRAGMA table_info(jobs)")}
+            if "auto" not in cols:
+                self.conn.execute("ALTER TABLE jobs ADD COLUMN auto INTEGER NOT NULL DEFAULT 0")
                 self.conn.commit()
 
     def _exec(self, sql: str, params=()) -> sqlite3.Cursor:
@@ -88,6 +105,7 @@ class DB:
         for r in rows:
             if r["vmid"] not in present:
                 self._exec("DELETE FROM containers WHERE vmid=?", (r["vmid"],))
+                self._exec("DELETE FROM auto_policy WHERE vmid=?", (r["vmid"],))
 
     def containers(self) -> list[dict]:
         rows = self._all("SELECT * FROM containers ORDER BY vmid")
@@ -105,10 +123,10 @@ class DB:
 
     # jobs
 
-    def create_job(self, job_id: str, vmid: int, node: str, kind: str, snapshot: str | None) -> None:
+    def create_job(self, job_id: str, vmid: int, node: str, kind: str, snapshot: str | None, auto: bool = False) -> None:
         self._exec(
-            "INSERT INTO jobs (id, vmid, node, kind, snapshot, status, created_at) VALUES (?, ?, ?, ?, ?, 'queued', ?)",
-            (job_id, vmid, node, kind, snapshot, time.time()),
+            "INSERT INTO jobs (id, vmid, node, kind, snapshot, status, created_at, auto) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
+            (job_id, vmid, node, kind, snapshot, time.time(), int(auto)),
         )
 
     def update_job(self, job_id: str, **fields) -> None:
@@ -123,13 +141,43 @@ class DB:
         return rows[0] if rows else None
 
     def jobs(self, vmid: int | None = None, limit: int = 50) -> list[dict]:
-        cols = "id, vmid, node, kind, snapshot, status, rc, created_at, finished_at"
+        cols = "id, vmid, node, kind, snapshot, status, rc, created_at, finished_at, auto"
         if vmid is None:
             return self._all(f"SELECT {cols} FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,))
         return self._all(f"SELECT {cols} FROM jobs WHERE vmid=? ORDER BY created_at DESC LIMIT ?", (vmid, limit))
 
     def unfinished_jobs(self) -> list[dict]:
         return self._all("SELECT * FROM jobs WHERE status IN ('queued', 'running')")
+
+    # automatic updates
+
+    def auto_policies(self) -> dict[int, dict]:
+        return {r["vmid"]: r for r in self._all("SELECT * FROM auto_policy")}
+
+    def set_auto_policy(self, vmid: int, policy: str, rollback: bool) -> None:
+        self._exec(
+            """INSERT INTO auto_policy (vmid, policy, rollback) VALUES (?, ?, ?)
+               ON CONFLICT (vmid) DO UPDATE SET policy=excluded.policy, rollback=excluded.rollback""",
+            (vmid, policy, int(rollback)),
+        )
+
+    def pause_auto(self, vmid: int, reason: str | None) -> None:
+        """Pause (with a reason) or resume (reason None) automatic updates for a container."""
+        self._exec(
+            """INSERT INTO auto_policy (vmid, paused_at, paused_reason) VALUES (?, ?, ?)
+               ON CONFLICT (vmid) DO UPDATE SET paused_at=excluded.paused_at, paused_reason=excluded.paused_reason""",
+            (vmid, time.time() if reason else None, reason),
+        )
+
+    def first_seen(self, key: str) -> float:
+        """When `key` was first seen, recording now if it's new."""
+        self._exec("INSERT OR IGNORE INTO first_seen (key, at) VALUES (?, ?)", (key, time.time()))
+        return self._all("SELECT at FROM first_seen WHERE key=?", (key,))[0]["at"]
+
+    def last_success(self, vmid: int, kinds: tuple[str, ...] = ("app", "os")) -> float:
+        marks = ",".join("?" * len(kinds))
+        rows = self._all(f"SELECT MAX(finished_at) AS at FROM jobs WHERE vmid=? AND status='success' AND kind IN ({marks})", (vmid, *kinds))
+        return rows[0]["at"] or 0.0
 
     # notifications / misc
 

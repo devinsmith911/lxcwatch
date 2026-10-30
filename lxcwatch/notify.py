@@ -73,10 +73,17 @@ async def send(cfg: Config, db: DB, http: httpx.AsyncClient) -> None:
     if not lines:
         return
     title = f"{len(lines)} LXC update{'s' if len(lines) != 1 else ''} available"
+    if await deliver(cfg, http, title, lines, tags="package"):
+        for key in keys:
+            db.mark_notified(key)
+
+
+async def deliver(cfg: Config, http: httpx.AsyncClient, title: str, lines: list[dict], tags: str = "package") -> bool:
+    """Send to every configured channel; True if one took it (or none is configured)."""
     body = "\n".join(i["text"] + (f"\n  {i['url']}" if i["url"] else "") for i in lines)
     delivered = not (cfg.ntfy_url or cfg.webhook_url or cfg.pushover_token)  # nothing configured: just record them
     if cfg.ntfy_url:
-        headers = {"Title": title, "Tags": "package"}
+        headers = {"Title": title, "Tags": tags}
         if cfg.ntfy_token:
             headers["Authorization"] = f"Bearer {cfg.ntfy_token}"
         if cfg.public_url:
@@ -102,6 +109,4 @@ async def send(cfg: Config, db: DB, http: httpx.AsyncClient) -> None:
             delivered = True
         except httpx.HTTPError as e:
             log.warning("webhook notification failed: %s", e)
-    if delivered:
-        for key in keys:
-            db.mark_notified(key)
+    return delivered

@@ -4,6 +4,10 @@ Each step is an ordinary job; the batch starts it, waits for it (and its
 follow-up rescan) to finish, then moves on. Per container the app update runs
 before the package update. The queue lives in memory: if lxcwatch restarts, the
 running job is resumed as usual but the rest of the batch is dropped.
+
+Automatic updates (auto.py) use the same runner with a prepared plan: steps
+can carry their own snapshot, restart and package-list settings, and a failed
+step skips the rest of that container's steps.
 """
 
 import asyncio
@@ -27,6 +31,8 @@ class Batches:
         self.current: dict | None = None
         self.stop_requested = False
         self.task: asyncio.Task | None = None
+        self.stop_reason = "stopped"
+        self.after_step = None
 
     @property
     def running(self) -> bool:
@@ -48,21 +54,31 @@ class Batches:
         ]
         if not steps:
             raise BatchError("nothing selected")
+        return self.start_plan(steps, {"kinds": kinds, "snapshot": snapshot, "restart": restart, "stop_on_failure": stop_on_failure})
+
+    def start_plan(self, steps: list[dict], options: dict, auto: bool = False, after_step=None) -> dict:
+        """Run prepared steps ({vmid, name, kind, and optional snapshot/restart/packages})."""
+        if self.running:
+            raise BatchError("an update-all run is already in progress")
+        for step in steps:
+            step.update(status="pending", job=None, note=None)
         self.current = {
             "id": secrets.token_hex(4),
             "status": "running",
+            "auto": auto,
             "started_at": time.time(),
             "finished_at": None,
-            "options": {"kinds": kinds, "snapshot": snapshot, "restart": restart, "stop_on_failure": stop_on_failure},
+            "options": options,
             "steps": steps,
         }
-        self.stop_requested = False
+        self.stop_requested, self.stop_reason = False, "stopped"
+        self.after_step = after_step
         self.task = asyncio.create_task(self._run(self.current))
         return self.current
 
-    def stop(self) -> None:
+    def stop(self, reason: str = "stopped") -> None:
         if self.running:
-            self.stop_requested = True
+            self.stop_requested, self.stop_reason = True, reason
 
     def dismiss(self) -> None:
         if not self.running:
@@ -74,11 +90,23 @@ class Batches:
             for i, step in enumerate(batch["steps"]):
                 if self.stop_requested:
                     for rest in batch["steps"][i:]:
-                        rest["status"], rest["note"] = "skipped", "stopped"
+                        if rest["status"] == "pending":
+                            rest["status"], rest["note"] = "skipped", self.stop_reason
                     batch["status"] = "stopped"
                     break
+                if step["status"] != "pending":
+                    continue
                 await self._step(step, opts)
-                if step["status"] == "failed" and opts["stop_on_failure"]:
+                if self.after_step:
+                    try:
+                        await self.after_step(step)
+                    except Exception:
+                        log.exception("after-step hook failed")
+                if step["status"] == "failed" and batch.get("auto"):
+                    for rest in batch["steps"][i + 1:]:
+                        if rest["vmid"] == step["vmid"] and rest["status"] == "pending":
+                            rest["status"], rest["note"] = "skipped", f"the {step['kind']} update failed"
+                if step["status"] == "failed" and opts.get("stop_on_failure"):
                     for rest in batch["steps"][i + 1:]:
                         rest["status"], rest["note"] = "skipped", "stopped after a failure"
                     batch["status"] = "stopped"
@@ -111,7 +139,9 @@ class Batches:
             await asyncio.sleep(2)
         step["note"] = None
         try:
-            job_id = self.jobs.start(step["vmid"], step["kind"], opts["snapshot"], restart=opts["restart"])
+            job_id = self.jobs.start(step["vmid"], step["kind"], step.get("snapshot", opts.get("snapshot", False)),
+                                     restart=step.get("restart", opts.get("restart", "never")),
+                                     packages=step.get("packages"), auto=bool(self.current and self.current.get("auto")))
         except JobError as e:
             step["status"], step["note"] = "skipped", str(e)
             return

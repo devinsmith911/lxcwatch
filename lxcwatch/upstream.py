@@ -313,6 +313,8 @@ class Upstream:
         self.cfg = cfg
         self.http = httpx.AsyncClient(timeout=20, follow_redirects=True, headers={"User-Agent": "lxcwatch"})
         self._cache: dict[tuple, tuple[float, object]] = {}
+        # (forge, repo, tag) -> publish date (ISO), noted whenever we read a release.
+        self.published: dict[tuple[str, str, str], str] = {}
 
     async def close(self) -> None:
         await self.http.aclose()
@@ -354,7 +356,10 @@ class Upstream:
         if forge != "gitlab" and not tag_prefix:
             r = await self.http.get(f"{base}/releases/latest", headers=headers)
             if r.status_code == 200:
-                tag = r.json().get("tag_name")
+                rel = r.json()
+                tag = rel.get("tag_name")
+                if tag and rel.get("published_at"):
+                    self.published[(forge, repo, tag)] = rel["published_at"]
             elif r.status_code != 404:
                 _check(r)
         if tag is None:
@@ -367,6 +372,9 @@ class Upstream:
                 if tag_prefix and not name.startswith(tag_prefix):
                     continue
                 tag = name
+                when = rel.get("published_at") or rel.get("released_at")
+                if when:
+                    self.published[(forge, repo, tag)] = when
                 break
         return self._put(key, tag)
 

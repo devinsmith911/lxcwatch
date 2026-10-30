@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Automatic updates, off until you turn them on. Choose a maintenance window, the days it runs and how long new app releases wait (3 days by default) in the new **Settings** screen. Then choose per container what gets installed: security packages, all packages, or the app and packages. Updates run one container at a time with a snapshot first. A failure pauses that container's automatic updates and can roll back to the snapshot if you opt in. You get a summary notification after each run.
+
 ## 1.3.1 (2026-10-30)
 
 ### Fixed

@@ -122,6 +122,8 @@ else
   echo "pkgmgr=unknown"
 fi
 if [ -f /var/run/reboot-required ]; then echo "reboot_required=1"; fi
+# lxcwatch itself runs here (deb or install.sh): automatic updates treat it carefully.
+if [ -d /opt/lxcwatch/venv ]; then echo "lxcwatch_host=1"; fi
 stale=$(__STALE__)
 if [ -n "$stale" ]; then echo "stale_procs=$stale"; fi
 echo "probe_ok=1"
@@ -190,6 +192,7 @@ def parse_probe(text: str) -> dict:
         "embedded": [],  # its release checks and assignments
         "vertimes": {},  # version file path -> mtime
         "app_packages": [],  # [{name, version, origin, homepage}] candidates for apt-installed apps
+        "lxcwatch_host": False,
         "probe_ok": False,
     }
     for line in text.splitlines():
@@ -245,7 +248,7 @@ def parse_probe(text: str) -> dict:
                 info["disk_free_kb"] = int(value) if value.isdigit() else None
             elif key == "usr_unmerged":
                 info["usr_unmerged"] = value == "1"
-            elif key in ("pkg_refresh_failed", "reboot_required", "probe_ok"):
+            elif key in ("pkg_refresh_failed", "reboot_required", "probe_ok", "lxcwatch_host"):
                 info[key] = value == "1"
             elif key in info:
                 info[key] = value or None

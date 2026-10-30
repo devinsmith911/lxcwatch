@@ -164,6 +164,10 @@ class Cluster:
             if not info["probe_ok"]:
                 raise RuntimeError(r.err.strip() or f"probe exited with {r.rc}")
             await self._resolve(info)
+            # Start the clock for automatic updates' minimum release age.
+            for comp in info["components"]:
+                if comp["state"] == "outdated":
+                    comp["first_seen"] = self.db.first_seen(f"{vmid}|{comp['name']}|{comp['target']}")
             self.db.save_scan(vmid, info, None)
         except Exception as e:
             log.warning("scan of %s failed: %s", vmid, e)
@@ -192,6 +196,9 @@ class Cluster:
             except httpx.HTTPError as e:
                 info["upstream_errors"].append(f"{c.repo}: {e}")
         info["components"] = build_components(checks, info["versions"], latest)
+        for comp in info["components"]:
+            if comp.get("target_tag") and comp.get("repo"):
+                comp["published"] = self.upstream.published.get((comp["forge"], comp["repo"], comp["target_tag"]))
         info["components"] += package_components(
             info.pop("app_packages", []), [info["script"], info["slug"], info.get("script_app")],
             info["packages"], info["components"], info.get("os_id"), info.get("os_codename"))
