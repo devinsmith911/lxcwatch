@@ -100,10 +100,11 @@ class Cluster:
         token = FRESH_SINCE.set(time.time()) if fresh else None
         try:
             await self._scan_all()
+            # Inside the fresh window, so Scan now also refetches lxcwatch's own release.
+            await self.check_self_update()
         finally:
             if token:
                 FRESH_SINCE.reset(token)
-        await self.check_self_update()
 
     async def check_self_update(self) -> None:
         """Record whether a newer lxcwatch release exists (for the header and notifications)."""

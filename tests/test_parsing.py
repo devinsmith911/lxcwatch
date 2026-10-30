@@ -503,3 +503,27 @@ def test_stored_self_update_ignores_the_running_version(tmp_path, monkeypatch):
     assert cluster.stored_self_update(db) is None
     db.set("self_update", json.dumps({"current": "1.1.1", "version": "1.3.0", "url": "u"}))
     assert cluster.stored_self_update(db) == {"current": "1.2.0", "version": "1.3.0", "url": "u"}
+
+
+def test_manual_scan_rechecks_lxcwatch_release_fresh(tmp_path):
+    import asyncio
+    from lxcwatch import cluster as cl
+    from lxcwatch.db import DB
+    from lxcwatch.upstream import FRESH_SINCE
+
+    seen = []
+
+    class FakeUpstream:
+        async def lxcwatch_latest(self):
+            seen.append(FRESH_SINCE.get())
+            return None
+
+    c = cl.Cluster.__new__(cl.Cluster)
+    c.db, c.upstream = DB(str(tmp_path / "t.db")), FakeUpstream()
+
+    async def no_scan():
+        return None
+    c._scan_all = no_scan
+    asyncio.run(c.scan_all(fresh=True))
+    asyncio.run(c.scan_all())
+    assert seen[0] is not None and seen[1] is None
