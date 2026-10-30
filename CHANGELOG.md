@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.1 (2026-10-30)
 
 ### Fixed
 - "Scan now" also checks for a new lxcwatch release straight away. Before, the "update available" badge could take up to 6 hours to appear.
