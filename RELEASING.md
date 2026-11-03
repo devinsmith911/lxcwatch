@@ -24,6 +24,8 @@ The workflow needs a `PACKAGES_TOKEN` repository secret: a token with package re
 
 The GitHub repository is a push mirror of the self-hosted git server, so tag and commit in the self-hosted git server only. Anything pushed to GitHub directly is overwritten at the next sync.
 
-When the tag reaches GitHub, its own **Release** workflow tests the tagged commit, builds the `.deb` and creates a GitHub release with the same notes. The apt repository stays on the self-hosted git server. To create or refresh a release for an existing tag, use **Actions → Release → Run workflow** on GitHub.
+When the tag reaches GitHub, its own **Release** workflow tests the tagged commit, builds the `.deb`, creates a GitHub release with the same notes, and rebuilds the public apt repository on GitHub Pages from the five latest releases. the self-hosted git server keeps its own apt repository for installs that already use it. To create or refresh a release for an existing tag, use **Actions → Release → Run workflow** on GitHub.
+
+The workflow needs an `APT_SIGNING_KEY` repository secret: the armored private key that signs the apt repository. Users trust its public half, so replacing the key means every GitHub install has to fetch the new one. Pages must be set to deploy from GitHub Actions, and the `github-pages` environment must allow `[0-9]*` tags as well as `main`.
 
 The self-hosted workflows are in the self-hosted workflows folder and the GitHub one is in `.github/workflows/`. Each platform only runs its own.

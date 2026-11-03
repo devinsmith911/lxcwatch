@@ -1,12 +1,14 @@
 name: Release
 
 # Runs on the GitHub mirror when an X.Y.Z tag arrives from the self-hosted git server. Tests that
-# commit, builds lxcwatch_X.Y.Z_all.deb and creates a GitHub release with the
-# version's CHANGELOG.md section and the .deb attached. Run it by hand to
+# commit, builds lxcwatch_X.Y.Z_all.deb, creates a GitHub release with the
+# version's CHANGELOG.md section and the .deb attached, then rebuilds the public
+# apt repository on GitHub Pages from the latest releases. Run it by hand to
 # (re)release an existing tag.
 #
 # The mirror overwrites anything pushed here, so this must not create tags or
-# commits. The release and apt repo come from the self-hosted workflows folder.
+# commits, and Pages deploys from this workflow because a gh-pages branch would
+# be deleted. The release and apt repo come from the self-hosted workflows folder.
 on:
   push:
     tags: ['[0-9]*']
@@ -123,3 +125,49 @@ jobs:
           else
             gh release create "$TAG" "$deb" --verify-tag --title "$version" --notes-file /tmp/notes.md
           fi
+
+  pages:
+    runs-on: ubuntu-latest
+    needs: release
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      -
+        # The workflow's own commit, not the tag: an older tag being re-released
+        # may not contain the build script.
+        name: Check out
+        uses: actions/checkout@v4
+      -
+        name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends apt-utils >/dev/null
+      -
+        # Every deploy replaces the whole site, so fetch all the versions to keep.
+        name: Fetch the latest packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 5 --exclude-drafts --exclude-pre-releases --json tagName -q '.[].tagName' |
+            while read -r tag; do
+              gh release download "$tag" --pattern 'lxcwatch_*_all.deb' --dir /tmp/debs
+            done
+      -
+        # Needs an APT_SIGNING_KEY secret: the armored private key whose public
+        # half users install as /etc/apt/keyrings/lxcwatch.asc.
+        name: Build the apt repository
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: packaging/build-apt-repo.sh /tmp/debs site
+      -
+        name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      -
+        name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4
