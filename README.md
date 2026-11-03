@@ -6,6 +6,23 @@ A web dashboard for keeping the LXCs in a Proxmox cluster up to date. For every 
 
 It's built for containers created with the [Proxmox VE community-scripts](https://community-scripts.org), the ones with the `update` command inside. Other Debian, Ubuntu and Alpine containers still get package tracking and updates.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
+  <img src="docs/screenshots/dashboard-light.png" alt="The lxcwatch dashboard listing containers with their app versions, pending packages and update buttons">
+</picture>
+
+## Contents
+
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Install](#install)
+  - [Upgrading and removing](#upgrading-and-removing)
+- [Configuration](#configuration)
+- [Things to know](#things-to-know)
+- [How it works](#how-it-works)
+- [Building from source](#building-from-source)
+- [License](#license)
+
 ## Features
 
 - **One view of the whole cluster.** lxcwatch connects to your Proxmox nodes over SSH, with nothing installed in the containers. For each container it shows:
@@ -19,6 +36,38 @@ It's built for containers created with the [Proxmox VE community-scripts](https:
 - **Notifications.** New updates can go to ntfy, Pushover or a webhook. lxcwatch also tells you when there's a new version of itself.
 - **Automatic updates, if you want them.** Off by default. Turn them on in **Settings**, pick the days and maintenance window, and choose per container what gets installed: security packages, all packages, or the app and packages.
 - **Activity history.** See recent jobs across all containers, with their results and logs.
+
+## Screenshots
+
+These use made-up data.
+
+**Container details:** versions, release notes, automatic updates and snapshots.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/details-dark.png">
+  <img src="docs/screenshots/details-light.png" alt="The details panel for a container, with update buttons, app versions, automatic update options and snapshots">
+</picture>
+
+**Automatic updates:** the maintenance window, days and release wait.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
+  <img src="docs/screenshots/settings-light.png" alt="The settings dialog with the maintenance window, days, release wait and snapshot options">
+</picture>
+
+**Activity:** recent jobs across all containers.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.png">
+  <img src="docs/screenshots/activity-light.png" alt="The activity panel listing recent jobs with their results and log buttons">
+</picture>
+
+**On a phone:**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-dark.png">
+  <img src="docs/screenshots/mobile-light.png" alt="The dashboard at phone width, with containers shown as a list" width="300">
+</picture>
 
 ## Install
 
