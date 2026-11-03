@@ -51,4 +51,5 @@ packaging/build-deb.sh               # local .deb, versioned <last tag>+dev<n>.<
 - UI style: no coloured stripes down the side of cards or rows. Use tints, status dots or badges. Show update buttons only when there's something to update. Say "Update packages", not "Update OS".
 - Defaults stay conservative: automatic updates are off globally and per container until the user opts in, snapshots are opt-in for updates (but ticked by default for Debian release upgrades), and restarts after package updates default to "only if needed".
 - Use `info@dsmithtech.com` for any contact or maintainer address in the repo, never a personal address.
-- CI runs on a self-hosted runner in `debian:13` job containers without node, so workflows use plain `git clone` instead of `actions/checkout`. Publishing needs the `PACKAGES_TOKEN` secret. CrowdSec in front of the self-hosted git server has blocked large uploads before.
+- CI runs on a self-hosted runner in `debian:13` job containers without node, so the self-hosted workflows folder use plain `git clone` instead of `actions/checkout`. Publishing needs the `PACKAGES_TOKEN` secret.
+- `.github/workflows/release.yml` runs on the GitHub mirror and only creates GitHub releases. The mirror overwrites anything pushed to GitHub, so it must not create tags or commits. Make all changes in the self-hosted git server.

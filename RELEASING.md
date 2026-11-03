@@ -19,3 +19,11 @@ The **Release** workflow then:
 To create or refresh the release for an existing tag, run the workflow by hand: **Actions → Release → Run workflow**, then enter the tag. A version that's already in the apt repository is left as it is.
 
 The workflow needs a `PACKAGES_TOKEN` repository secret: a token with package read and write access. The built-in CI token can create releases but can't publish packages.
+
+## GitHub
+
+The GitHub repository is a push mirror of the self-hosted git server, so tag and commit in the self-hosted git server only. Anything pushed to GitHub directly is overwritten at the next sync.
+
+When the tag reaches GitHub, its own **Release** workflow tests the tagged commit, builds the `.deb` and creates a GitHub release with the same notes. The apt repository stays on the self-hosted git server. To create or refresh a release for an existing tag, use **Actions → Release → Run workflow** on GitHub.
+
+The self-hosted workflows are in the self-hosted workflows folder and the GitHub one is in `.github/workflows/`. Each platform only runs its own.
