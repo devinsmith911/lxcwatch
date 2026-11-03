@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 (2026-11-03)
 
 ### Changed
 - lxcwatch now lives on GitHub, and the update check and **Release notes** link point there. Installs from before this version need to switch to the new apt repository to keep getting upgrades; the README's **Upgrading and removing** section has the commands.
