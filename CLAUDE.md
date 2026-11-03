@@ -1,6 +1,6 @@
 # lxcwatch
 
-Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built around the Proxmox VE community-scripts (`update` inside each container). Python 3.11+, FastAPI, SQLite, the system `ssh` client; the UI is one vanilla-JS page. Developed on GitHub (github.com/devinsmith911/lxcwatch). The public installs the Debian package from the apt repository on GitHub Pages; the README is written for those users.
+Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built around the Proxmox VE community-scripts (`update` inside each container). Python 3.11+, FastAPI, SQLite, the system `ssh` client; the UI is one vanilla-JS page with no build step. Developed on GitHub (github.com/devinsmith911/lxcwatch). The public installs the Debian package from the apt repository on GitHub Pages; the README is written for those users.
 
 ## Layout
 
@@ -15,7 +15,9 @@ Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built aroun
 - `lxcwatch/notify.py`: ntfy, Pushover and webhook notifications, each item once (the `notified` table).
 - `lxcwatch/auth.py`: signed session cookies and the login lockout; basic auth still works for API clients.
 - `lxcwatch/db.py`: SQLite. New columns are added in `DB.__init__` with `PRAGMA table_info` plus `ALTER TABLE`, so existing installs upgrade in place.
-- `lxcwatch/static/index.html`: the whole UI. `login.html` is the sign-in page.
+- `lxcwatch/static/index.html`: the page's markup. `login.html` is the sign-in page.
+- `lxcwatch/static/css/app.css`: the dashboard's styles.
+- `lxcwatch/static/js/`: plain scripts that share one global scope and load in the order listed in `index.html`: `core` (helpers, state, `api`), `table`, `update-all`, `auto`, `dialogs` (batch, release upgrade, snapshot), `activity`, `status` (connection, `refresh`, starting updates), `details` (drawer, details, job log), `main` (event wiring and startup). Only `main.js` may run code at load, and new files also need adding to `APP_FILES` in `app.py`.
 - `packaging/`: `build-deb.sh` and the maintainer scripts. `deploy/install.sh` is the from-source install.
 - `dev/` (gitignored, local only; may not exist in a fresh clone): the fake Proxmox node and the mock-UI screenshot tools (see `dev/README.md` there).
 

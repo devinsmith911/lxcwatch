@@ -223,6 +223,33 @@ for _path in PUBLIC_FILES:
     app.add_api_route(_path, _public_file(_path), methods=["GET"], include_in_schema=False)
 
 
+# The dashboard's own files. They need a sign-in like the page itself, and
+# no-cache so an upgrade never pairs a new page with old scripts.
+APP_FILES = {
+    "/css/app.css": "text/css",
+    "/js/core.js": "text/javascript",
+    "/js/table.js": "text/javascript",
+    "/js/update-all.js": "text/javascript",
+    "/js/auto.js": "text/javascript",
+    "/js/dialogs.js": "text/javascript",
+    "/js/activity.js": "text/javascript",
+    "/js/status.js": "text/javascript",
+    "/js/details.js": "text/javascript",
+    "/js/main.js": "text/javascript",
+}
+
+
+def _app_file(path: str):
+    async def handler():
+        return FileResponse(os.path.join(STATIC, path.lstrip("/")), media_type=APP_FILES[path],
+                            headers={"Cache-Control": "no-cache"})
+    return handler
+
+
+for _path in APP_FILES:
+    app.add_api_route(_path, _app_file(_path), methods=["GET"], include_in_schema=False)
+
+
 @app.get("/")
 async def index():
     return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-cache"})

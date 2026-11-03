@@ -21,4 +21,4 @@ build-backend = "setuptools.build_meta"
 packages = ["lxcwatch"]
 
 [tool.setuptools.package-data]
-lxcwatch = ["static/*"]
+lxcwatch = ["static/*", "static/css/*", "static/js/*"]

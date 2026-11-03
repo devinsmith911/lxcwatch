@@ -2,6 +2,7 @@ import base64
 import dataclasses
 import importlib
 import os
+import re
 import time
 
 import pytest
@@ -83,6 +84,27 @@ def test_login_flow(client):
     client.post("/api/logout", headers=H)
     client.cookies.clear()
     assert client.get("/api/containers").status_code == 401
+
+
+def test_dashboard_files_are_served_only_after_sign_in(client):
+    good = "Basic " + base64.b64encode(b"admin:s3cret").decode()
+    page = client.get("/", headers={"Authorization": good})
+    assert page.status_code == 200
+    paths = re.findall(r'(?:src|href)="(/(?:js|css)/[^"]+)"', page.text)
+    assert "/js/main.js" in paths and "/css/app.css" in paths
+    assert paths[-1] == "/js/main.js"  # it starts the app, so everything else must load first
+    for path in paths:
+        assert client.get(path, follow_redirects=False).status_code == 303
+        r = client.get(path, headers={"Authorization": good})
+        assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+        assert r.headers["content-type"].split(";")[0] == ("text/css" if path.endswith(".css") else "text/javascript")
+
+
+def test_every_dashboard_file_has_a_route(client):
+    static = os.path.join(os.path.dirname(config.__file__), "static")
+    on_disk = {f"/{d}/{name}" for d in ("css", "js") for name in os.listdir(os.path.join(static, d))}
+    routes = {r.path for r in client.app.routes}
+    assert on_disk and on_disk <= routes
 
 
 def test_basic_auth_still_works(client):
