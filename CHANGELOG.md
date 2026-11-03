@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- The menu at the top right now opens from a settings cog instead of three dots, and has a cleaner layout with properly spaced items.
+
 ## 2.0.0 (2026-10-30)
 
 ### Added
