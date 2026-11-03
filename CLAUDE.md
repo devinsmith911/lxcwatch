@@ -1,6 +1,6 @@
 # lxcwatch
 
-Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built around the Proxmox VE community-scripts (`update` inside each container). Python 3.11+, FastAPI, SQLite, the system `ssh` client; the UI is one vanilla-JS page. Shipped as a Debian package from this repo's the self-hosted git server; the README is written for those users.
+Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built around the Proxmox VE community-scripts (`update` inside each container). Python 3.11+, FastAPI, SQLite, the system `ssh` client; the UI is one vanilla-JS page. Developed on the self-hosted git server and push-mirrored to GitHub (github.com/devinsmith911/lxcwatch). The public installs the Debian package from the apt repository on GitHub Pages; the README is written for those users. the self-hosted server's apt repository stays for installs that already use it.
 
 ## Layout
 

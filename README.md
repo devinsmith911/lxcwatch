@@ -4,20 +4,21 @@
 
 A web dashboard for keeping the LXCs in a Proxmox cluster up to date. For every container it shows the installed app version and the version available, pending package updates, and whether a newer Debian release is out. You can update one container or all of them from the page, with an optional snapshot first so you can roll back.
 
-It's built for containers created with the [Proxmox VE community-scripts](https://community-scripts.org), the ones with the `update` command inside. Other containers still get package tracking and updates.
+It's built for containers created with the [Proxmox VE community-scripts](https://community-scripts.org), the ones with the `update` command inside. Other Debian, Ubuntu and Alpine containers still get package tracking and updates.
 
 ## Features
 
 - **One view of the whole cluster.** lxcwatch connects to your Proxmox nodes over SSH, with nothing installed in the containers. For each container it shows:
-  - the installed and available app version, with links to the release notes;
-  - pending package updates, with security updates flagged;
+  - the installed and available app version, with links to the release notes, including apps installed with apt such as Jellyfin or Plex;
+  - pending package updates, with security updates flagged, and package sources that failed to refresh;
   - whether services need a restart to pick up updated libraries;
   - whether a newer Debian release is available.
 - **Updates from the browser.** It runs the community-script `update`, upgrades packages, does Debian release upgrades (e.g. 12 → 13) or restarts the container, and streams the log live.
 - **Update all.** It updates apps, packages or both across every container that needs it, one container at a time.
 - **Snapshots and rollback.** It can take a snapshot before any update, or whenever you like, and roll back with one click.
-- **Notifications.** New updates can go to ntfy, Pushover or a webhook.
-- **Automatic updates, if you want them.** Off by default. Turn them on in **Settings**, pick a maintenance window, and choose per container what gets installed: security packages, all packages, or the app and packages.
+- **Notifications.** New updates can go to ntfy, Pushover or a webhook. lxcwatch also tells you when there's a new version of itself.
+- **Automatic updates, if you want them.** Off by default. Turn them on in **Settings**, pick the days and maintenance window, and choose per container what gets installed: security packages, all packages, or the app and packages.
+- **Activity history.** See recent jobs across all containers, with their results and logs.
 
 ## Install
 
@@ -54,7 +55,7 @@ lxcwatch runs in its own small LXC (Debian 12/13 or Ubuntu 24.04; 1 core and 512
 
 ### Upgrading and removing
 
-- **Upgrade:** `apt update && apt upgrade`. lxcwatch also lists its own update under Packages. Your config, SSH key and database are kept.
+- **Upgrade:** `apt update && apt upgrade`. When a new version is out, a badge in the header links to its release notes. Your config, SSH key and database are kept.
 - **Remove:** `apt remove lxcwatch` keeps your config, key and data; `apt purge lxcwatch` deletes them too.
 - **If `/opt/lxcwatch/venv` goes missing:** run `dpkg-reconfigure lxcwatch`. The package rebuilds that folder on every install and upgrade, so don't edit or delete it.
 
@@ -67,13 +68,17 @@ lxcwatch reads its settings from environment variables, which the package keeps 
 | Variable | Default | |
 |---|---|---|
 | `LXCWATCH_PVE_HOST` | required | Any cluster node |
-| `LXCWATCH_PASSWORD` | required | Web UI password (user `admin` unless `LXCWATCH_USERNAME` is set) |
+| `LXCWATCH_PASSWORD` | required | Web UI password |
+| `LXCWATCH_USERNAME` | `admin` | Web UI username |
 | `LXCWATCH_SSH_USER` | `root` | A non-root user needs passwordless `sudo` for `pct` and `pvesh` |
+| `LXCWATCH_SSH_PORT` | `22` | SSH port on the Proxmox nodes |
+| `LXCWATCH_SSH_KEY` | — | Path to the SSH private key. The package sets this for you |
 | `LXCWATCH_NODE_ADDRESSES` | — | `pve1=10.0.0.11,...` if the node addresses Proxmox reports aren't reachable |
 | `LXCWATCH_SCAN_INTERVAL_MINUTES` | `360` | `0` disables scheduled scans |
 | `LXCWATCH_SCAN_ON_STARTUP` | `overdue` | `overdue`: scan at startup only if the last scan is older than the interval; `always`; `never` |
 | `LXCWATCH_REFRESH_PACKAGES` | `true` | Runs `apt-get update` / `apk update` during scans |
 | `LXCWATCH_KEEP_SNAPSHOTS` | `3` | `lxcwatch-*` snapshots kept per container (`0` = keep all) |
+| `LXCWATCH_JOB_CONCURRENCY` | `2` | How many jobs can run at the same time |
 | `LXCWATCH_GITHUB_TOKEN` | — | Recommended once you have more than about 15 apps: GitHub allows 60 requests/hour without a token. It's also passed to `update` inside the containers, so app updates don't hit the limit either |
 | `LXCWATCH_NTFY_URL` / `_TOKEN` | — | ntfy topic URL |
 | `LXCWATCH_PUSHOVER_TOKEN` / `_USER` | — | Pushover application token and user key. Long messages are cut to Pushover's 1024-character limit |
@@ -87,12 +92,12 @@ A GitHub token only needs public read access: a fine-grained token with no extra
 ## Things to know
 
 - **Security:** the SSH key is effectively root on your whole cluster, and so is anyone who can sign in to lxcwatch. Use a strong password and keep the UI off the internet.
-- **Signing in:** sessions last 30 days, and changing `LXCWATCH_PASSWORD` signs everyone out. After 10 failed sign-ins from one address, that address is locked out for 15 minutes. Scripts can use HTTP basic auth instead, e.g. `curl -u admin:… https://lxcwatch.example/api/containers`. Behind a reverse proxy, pass `X-Forwarded-Proto` so the session cookie is marked secure.
+- **Signing in:** sessions last 30 days, and changing `LXCWATCH_PASSWORD` signs everyone out. After 10 failed sign-ins from one address, that address is locked out for 15 minutes. Scripts can use HTTP basic auth instead, e.g. `curl -u admin:… https://lxcwatch.example/api/containers`. Behind a reverse proxy, pass `X-Forwarded-Proto` so the session cookie is marked secure. `/healthz` needs no sign-in, for uptime checks.
 - **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph) and are off by default; tick "Take a snapshot first" when updating. If a snapshot can't be taken, the update doesn't run. You can also take a snapshot any time with **Take snapshot…** in a container's Details panel. `LXCWATCH_KEEP_SNAPSHOTS` only cleans up the automatic `lxcwatch-*` snapshots, so manual ones stay until you delete them. Rolling back restores the whole container, including app data written since the snapshot.
 - **Restarts:** containers share the host's kernel, so package updates never need a reboot for a new kernel. Services do keep running the old libraries until they restart, and lxcwatch shows **restart needed** when that's the case. Package updates can restart the container afterwards: only if needed (the default), always, or never.
 - **Debian release upgrades** run one major version at a time from a container's Details panel, never as part of Update all. Before starting, lxcwatch checks disk space, held packages, third-party repositories and whether your Proxmox host supports the new version. Only the official Debian sources are switched; third-party repositories stay on the old release. A snapshot is ticked by default; if an upgrade fails part-way, roll back to it.
 - **Apps installed with apt** (Jellyfin, Plex, Grafana, cloudflared and similar) show the version of their package, found from its vendor repo or its name. Release notes are linked when the package's source repository is known.
-- **Automatic updates** run only in the maintenance window set in **Settings** (in the server's time zone), and only for containers you opt in from their Details panel or by selecting several and choosing **Automatic updates…**. A run starts with a fresh scan, then goes one container at a time:
+- **Automatic updates** run only on the days and in the maintenance window set in **Settings** (03:00 to 05:00 every day until you change it, in the server's time zone), and only for containers you opt in from their Details panel or by selecting several and choosing **Automatic updates…**. A run starts with a fresh scan, then goes one container at a time:
   - app updates always take a snapshot first, and package-only updates do too unless you turn that off;
   - new app releases wait a few days (3 by default) before they're installed; package updates don't wait;
   - containers that are stopped, busy, have a failed or unfinished update, a retired script or package lists that couldn't be refreshed are skipped;
@@ -101,7 +106,7 @@ A GitHub token only needs public read access: a fine-grained token with no extra
   - when the window closes, the update in progress finishes and the rest waits for the next window. A summary goes to your notification channels after each run that changed something.
 - **Fresh data:** scheduled scans cache release information and scripts for a few hours to stay within GitHub's rate limit. **Scan now** and a container's **Rescan** always fetch fresh data, once per repository per scan.
 - **Activity** in the header lists recent jobs across all containers, with their results and logs.
-- **"Untracked"** means lxcwatch found a version file that the app's script doesn't refer to. **"Unknown"** means the installed or available version couldn't be determined.
+- **"Untracked"** means lxcwatch found a version file that the app's script doesn't refer to. **"Unknown"** means the installed or available version couldn't be determined. **"Lists stale"** means a package source failed to refresh, so updates from it may be missing; Details names each failing source and why.
 
 ## How it works
 
@@ -131,3 +136,7 @@ LXCWATCH_PVE_HOST=pve1 LXCWATCH_PASSWORD=dev .venv/bin/uvicorn lxcwatch.app:app 
 - **Docker:** build the image with `docker build -t lxcwatch .`. Mount a volume at `/data`, put the SSH key there, and set the same variables plus `LXCWATCH_SSH_KEY=/data/id_ed25519`.
 
 Found a bug or have an idea? [Open an issue](https://github.com/devinsmith911/lxcwatch/issues).
+
+## License
+
+[MIT](LICENSE)

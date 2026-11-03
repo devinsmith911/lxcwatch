@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- lxcwatch now lives on GitHub. New installs use the apt repository at `devinsmith911.github.io/lxcwatch`, and the update check and **Release notes** link point to GitHub. Existing installs keep upgrading through apt with no changes needed.
+
 ## 2.0.1 (2026-11-03)
 
 ### Changed
