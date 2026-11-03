@@ -98,22 +98,19 @@ A GitHub token only needs public read access: a fine-grained token with no extra
 
 ## Things to know
 
-- **Security:** the SSH key is effectively root on your whole cluster, and so is anyone who can sign in to lxcwatch. Use a strong password and keep the UI off the internet.
-- **Signing in:** sessions last 30 days, and changing `LXCWATCH_PASSWORD` signs everyone out. After 10 failed sign-ins from one address, that address is locked out for 15 minutes. Scripts can use HTTP basic auth instead, e.g. `curl -u admin:… https://lxcwatch.example/api/containers`. Behind a reverse proxy, pass `X-Forwarded-Proto` so the session cookie is marked secure. `/healthz` needs no sign-in, for uptime checks.
-- **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph) and are off by default; tick "Take a snapshot first" when updating. If a snapshot can't be taken, the update doesn't run. You can also take a snapshot any time with **Take snapshot…** in a container's Details panel. `LXCWATCH_KEEP_SNAPSHOTS` only cleans up the automatic `lxcwatch-*` snapshots, so manual ones stay until you delete them. Rolling back restores the whole container, including app data written since the snapshot.
-- **Restarts:** containers share the host's kernel, so package updates never need a reboot for a new kernel. Services do keep running the old libraries until they restart, and lxcwatch shows **restart needed** when that's the case. Package updates can restart the container afterwards: only if needed (the default), always, or never.
-- **Debian release upgrades** run one major version at a time from a container's Details panel, never as part of Update all. Before starting, lxcwatch checks disk space, held packages, third-party repositories and whether your Proxmox host supports the new version. Only the official Debian sources are switched; third-party repositories stay on the old release. A snapshot is ticked by default; if an upgrade fails part-way, roll back to it.
-- **Apps installed with apt** (Jellyfin, Plex, Grafana, cloudflared and similar) show the version of their package, found from its vendor repo or its name. Release notes are linked when the package's source repository is known.
-- **Automatic updates** run only on the days and in the maintenance window set in **Settings** (03:00 to 05:00 every day until you change it, in the server's time zone), and only for containers you opt in from their Details panel or by selecting several and choosing **Automatic updates…**. A run starts with a fresh scan, then goes one container at a time:
-  - app updates always take a snapshot first, and package-only updates do too unless you turn that off;
-  - new app releases wait a few days (3 by default) before they're installed; package updates don't wait;
-  - containers that are stopped, busy, have a failed or unfinished update, a retired script or package lists that couldn't be refreshed are skipped;
-  - a failed update pauses automatic updates for that container until you resume it or a manual update succeeds, and can roll back to the snapshot if you opted in;
-  - Debian release upgrades never run automatically, and in the container lxcwatch itself runs in, its own package is left alone and the container isn't restarted;
-  - when the window closes, the update in progress finishes and the rest waits for the next window. A summary goes to your notification channels after each run that changed something.
-- **Fresh data:** scheduled scans cache release information and scripts for a few hours to stay within GitHub's rate limit. **Scan now** and a container's **Rescan** always fetch fresh data, once per repository per scan.
-- **Activity** in the header lists recent jobs across all containers, with their results and logs.
-- **"Untracked"** means lxcwatch found a version file that the app's script doesn't refer to. **"Unknown"** means the installed or available version couldn't be determined. **"Lists stale"** means a package source failed to refresh, so updates from it may be missing; Details names each failing source and why.
+- **Security:** the SSH key is effectively root on your whole cluster, and so is anyone who can sign in. Use a strong password and keep the UI off the internet.
+- **Signing in:** sessions last 30 days, and 10 failed sign-ins lock an address out for 15 minutes. Scripts can use HTTP basic auth. Behind a reverse proxy, pass `X-Forwarded-Proto` so the session cookie is marked secure. `/healthz` needs no sign-in.
+- **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph); if one can't be taken, the update doesn't run. Rolling back restores the whole container, including app data written since the snapshot. Only automatic `lxcwatch-*` snapshots are cleaned up.
+- **Restarts:** services keep running old libraries until they restart, shown as **restart needed**. Package updates can restart the container only if needed (the default), always, or never.
+- **Debian release upgrades** run one major version at a time, never as part of Update all or automatic updates. lxcwatch runs pre-checks first and only switches official Debian sources, so third-party repositories stay on the old release.
+- **Automatic updates** run only in your maintenance window and only for containers you opt in:
+  - app updates always take a snapshot first, and package updates do too unless you turn that off;
+  - new app releases wait 3 days by default;
+  - containers that are stopped, busy or have a problem are skipped;
+  - a failed update pauses that container until you resume it or a manual update succeeds;
+  - the container running lxcwatch keeps its own package as is and isn't restarted.
+- **Fresh data:** scheduled scans cache release data for a few hours to stay within GitHub's rate limit. **Scan now** and **Rescan** always fetch fresh data.
+- **Status labels:** **Untracked** means a version file the app's script doesn't refer to. **Unknown** means the version couldn't be determined. **Lists stale** means a package source failed to refresh, so updates from it may be missing.
 
 ## How it works
 
