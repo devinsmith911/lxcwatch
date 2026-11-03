@@ -43,6 +43,7 @@ packaging/build-deb.sh               # local .deb, versioned <last tag>+dev<n>.<
 - Snapshots: automatic ones are `lxcwatch-*` and get pruned (`KEEP_SNAPSHOTS`); `manual-*` and any other name are never pruned.
 - Manual scans set `upstream.FRESH_SINCE` (a context variable), so cached upstream data older than the scan is refetched once per scan. Scheduled scans use the cache.
 - Every POST/DELETE needs the `X-Requested-With: lxcwatch` header (CSRF protection).
+- uvicorn runs with `--timeout-keep-alive 75`. Its 5-second default matches the dashboard's 5-second poll, so a reverse proxy could reuse a connection just as uvicorn closed it. Requests reaching a Go proxy such as Zoraxy over HTTP/2 aren't retried, so they failed with a 521. Keep this above the proxy's idle timeout (Zoraxy's is 30 seconds).
 - Headless Chrome won't go below a 500px viewport. Mobile checks go through a 390px iframe, which the local `dev/screenshots.sh` handles.
 
 ## Working conventions

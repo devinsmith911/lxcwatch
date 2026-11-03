@@ -10,7 +10,8 @@ EnvironmentFile=/etc/lxcwatch.env
 Environment=LXCWATCH_DATA_DIR=/var/lib/lxcwatch
 Environment=LXCWATCH_SSH_KEY=/var/lib/lxcwatch/id_ed25519
 Environment=HOME=/var/lib/lxcwatch
-ExecStart=/opt/lxcwatch/venv/bin/uvicorn lxcwatch.app:app --host 0.0.0.0 --port 8080 --proxy-headers --no-access-log
+# The keep-alive outlasts reverse proxies' idle timeouts, so they close idle connections first (see CLAUDE.md).
+ExecStart=/opt/lxcwatch/venv/bin/uvicorn lxcwatch.app:app --host 0.0.0.0 --port 8080 --proxy-headers --no-access-log --timeout-keep-alive 75
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

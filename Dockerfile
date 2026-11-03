@@ -15,4 +15,4 @@ USER lxcwatch
 ENV LXCWATCH_DATA_DIR=/data
 VOLUME /data
 EXPOSE 8080
-CMD ["uvicorn", "lxcwatch.app:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--no-access-log"]
+CMD ["uvicorn", "lxcwatch.app:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--no-access-log", "--timeout-keep-alive", "75"]
