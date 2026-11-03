@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.2 (2026-11-03)
+
+### Fixed
+- Behind a reverse proxy such as Zoraxy, dashboard requests could occasionally fail with an error like HTTP 521 even though lxcwatch was running. lxcwatch now keeps idle connections open for 75 seconds instead of 5, so the proxy no longer reuses one just as it closes. If you added `--timeout-keep-alive` yourself with a systemd override, you can remove it.
+
 ## 2.3.1 (2026-11-03)
 
 ### Changed
