@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.3.1 (2026-11-03)
 
 ### Changed
 - **Sign out** is hidden while you're signed in through Cloudflare Access. It used to end your Access session, which signed you out of every Access application rather than just lxcwatch.
