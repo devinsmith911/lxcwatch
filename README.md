@@ -58,6 +58,13 @@ lxcwatch runs in its own small LXC (Debian 12/13 or Ubuntu 24.04; 1 core and 512
 - **Upgrade:** `apt update && apt upgrade`. When a new version is out, a badge in the header links to its release notes. Your config, SSH key and database are kept.
 - **Remove:** `apt remove lxcwatch` keeps your config, key and data; `apt purge lxcwatch` deletes them too.
 - **If `/opt/lxcwatch/venv` goes missing:** run `dpkg-reconfigure lxcwatch`. The package rebuilds that folder on every install and upgrade, so don't edit or delete it.
+- **Installed before the move to GitHub?** Those installs use an older apt repository that no longer gets new versions. Switch to the current one, then upgrade as usual:
+
+  ```sh
+  curl -fsSL https://devinsmith911.github.io/lxcwatch/lxcwatch.asc -o /etc/apt/keyrings/lxcwatch.asc
+  echo "deb [signed-by=/etc/apt/keyrings/lxcwatch.asc] https://devinsmith911.github.io/lxcwatch stable main" > /etc/apt/sources.list.d/lxcwatch.list
+  apt update && apt upgrade
+  ```
 
 The [changelog](CHANGELOG.md) lists what changed in each version. It's also installed as `/usr/share/doc/lxcwatch/CHANGELOG.md`.
 

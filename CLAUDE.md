@@ -1,6 +1,6 @@
 # lxcwatch
 
-Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built around the Proxmox VE community-scripts (`update` inside each container). Python 3.11+, FastAPI, SQLite, the system `ssh` client; the UI is one vanilla-JS page. Developed on the self-hosted git server and push-mirrored to GitHub (github.com/devinsmith911/lxcwatch). The public installs the Debian package from the apt repository on GitHub Pages; the README is written for those users. the self-hosted server's apt repository stays for installs that already use it.
+Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built around the Proxmox VE community-scripts (`update` inside each container). Python 3.11+, FastAPI, SQLite, the system `ssh` client; the UI is one vanilla-JS page. Developed on GitHub (github.com/devinsmith911/lxcwatch). The public installs the Debian package from the apt repository on GitHub Pages; the README is written for those users.
 
 ## Layout
 
@@ -44,12 +44,11 @@ packaging/build-deb.sh               # local .deb, versioned <last tag>+dev<n>.<
 
 ## Working conventions
 
-- Commit and push straight to `main` (remote `origin` is reached over SSH). Pushes only run the tests; releases follow `RELEASING.md` (plain `X.Y.Z` tags, no `v`). Only cut a release when asked.
+- Commit and push straight to `main` (remote `origin` is GitHub). Pushes don't run CI, so run the tests first; releases follow `RELEASING.md` (plain `X.Y.Z` tags, no `v`). Only cut a release when asked.
 - Add user-facing changes to `CHANGELOG.md` under `## Unreleased`, written for users rather than as commit summaries. Leave CI and internal changes out.
 - Keep the README written for outside users: no maintainer or push instructions (those belong in `RELEASING.md`).
 - For UI changes, render screenshots (desktop and mobile, light and dark) and check them before pushing. When the user asks to see them first, wait for approval before pushing.
 - UI style: no coloured stripes down the side of cards or rows. Use tints, status dots or badges. Show update buttons only when there's something to update. Say "Update packages", not "Update OS".
 - Defaults stay conservative: automatic updates are off globally and per container until the user opts in, snapshots are opt-in for updates (but ticked by default for Debian release upgrades), and restarts after package updates default to "only if needed".
 - Use `info@dsmithtech.com` for any contact or maintainer address in the repo, never a personal address.
-- CI runs on a self-hosted runner in `debian:13` job containers without node, so the self-hosted workflows folder use plain `git clone` instead of `actions/checkout`. Publishing needs the `PACKAGES_TOKEN` secret.
-- `.github/workflows/release.yml` runs on the GitHub mirror and only creates GitHub releases. The mirror overwrites anything pushed to GitHub, so it must not create tags or commits. Make all changes in the self-hosted git server.
+- `.github/workflows/release.yml` runs on GitHub-hosted runners for version tags, testing and building in `debian:13`. Publishing to the apt repository needs the `APT_SIGNING_KEY` secret.

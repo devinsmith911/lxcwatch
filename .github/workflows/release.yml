@@ -1,14 +1,9 @@
 name: Release
 
-# Runs on the GitHub mirror when an X.Y.Z tag arrives from the self-hosted git server. Tests that
-# commit, builds lxcwatch_X.Y.Z_all.deb, creates a GitHub release with the
-# version's CHANGELOG.md section and the .deb attached, then rebuilds the public
-# apt repository on GitHub Pages from the latest releases. Run it by hand to
-# (re)release an existing tag.
-#
-# The mirror overwrites anything pushed here, so this must not create tags or
-# commits, and Pages deploys from this workflow because a gh-pages branch would
-# be deleted. The release and apt repo come from the self-hosted workflows folder.
+# Pushing an X.Y.Z tag tests that commit, builds lxcwatch_X.Y.Z_all.deb, creates
+# a GitHub release with the version's CHANGELOG.md section and the .deb attached,
+# then rebuilds the public apt repository on GitHub Pages from the latest
+# releases. Run it by hand to (re)release an existing tag.
 on:
   push:
     tags: ['[0-9]*']
@@ -31,7 +26,7 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # The same image as the self-hosted workflows, so both test and build alike.
+    # A supported target, rather than whatever Ubuntu the runner has.
     container:
       image: debian:13
     steps:
