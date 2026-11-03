@@ -288,3 +288,4 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   .pager { font-size: 12px; }
   .pkgs { columns: 1; }
 }
+#app { display: contents; }

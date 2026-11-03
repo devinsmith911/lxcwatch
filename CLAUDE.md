@@ -1,6 +1,6 @@
 # lxcwatch
 
-Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built around the Proxmox VE community-scripts (`update` inside each container). Python 3.11+, FastAPI, SQLite, the system `ssh` client; the UI is one vanilla-JS page with no build step. Developed on GitHub (github.com/devinsmith911/lxcwatch). The public installs the Debian package from the apt repository on GitHub Pages; the README is written for those users.
+Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built around the Proxmox VE community-scripts (`update` inside each container). Python 3.11+, FastAPI, SQLite, the system `ssh` client; the UI is one page in Preact, with no build step. Developed on GitHub (github.com/devinsmith911/lxcwatch). The public installs the Debian package from the apt repository on GitHub Pages; the README is written for those users.
 
 ## Layout
 
@@ -15,9 +15,10 @@ Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built aroun
 - `lxcwatch/notify.py`: ntfy, Pushover and webhook notifications, each item once (the `notified` table).
 - `lxcwatch/auth.py`: signed session cookies, the login lockout and Cloudflare Access JWT checks; basic auth still works for API clients.
 - `lxcwatch/db.py`: SQLite. New columns are added in `DB.__init__` with `PRAGMA table_info` plus `ALTER TABLE`, so existing installs upgrade in place.
-- `lxcwatch/static/index.html`: the page's markup. `login.html` is the sign-in page.
+- `lxcwatch/static/index.html`: an empty page that loads `js/main.js`. `login.html` is the sign-in page.
 - `lxcwatch/static/css/app.css`: the dashboard's styles.
-- `lxcwatch/static/js/`: plain scripts that share one global scope and load in the order listed in `index.html`: `core` (helpers, state, `api`), `table`, `update-all`, `auto`, `dialogs` (batch, release upgrade, snapshot), `activity`, `status` (connection, `refresh`, starting updates), `details` (drawer, details, job log), `main` (event wiring and startup). Only `main.js` may run code at load, and new files also need adding to `APP_FILES` in `app.py`.
+- `lxcwatch/static/js/`: the UI, as Preact components written with `htm` and loaded as native ES modules: `core` (state, helpers, the rules for reading a container), `actions` (what buttons do: refresh, drawer, dialogs, starting jobs), `header`, `table` (the main view), `drawer` (job log, activity), `details`, `dialogs`, `main` (startup).
+- `lxcwatch/static/vendor/`: `preact-htm.js`, the unmodified Preact and htm bundle, and its licences. There's no build step or Node dependency.
 - `packaging/`: `build-deb.sh` and the maintainer scripts. `deploy/install.sh` is the from-source install.
 - `dev/` (gitignored, local only; may not exist in a fresh clone): the fake Proxmox node and the mock-UI screenshot tools (see `dev/README.md` there).
 
@@ -50,6 +51,7 @@ packaging/build-deb.sh               # local .deb, versioned <last tag>+dev<n>.<
 - Add user-facing changes to `CHANGELOG.md` under `## Unreleased`, written for users rather than as commit summaries. Leave CI and internal changes out.
 - Keep the README written for outside users: no maintainer or push instructions (those belong in `RELEASING.md`).
 - For UI changes, render screenshots (desktop and mobile, light and dark) and check them before pushing. When the user asks to see them first, wait for approval before pushing.
+- UI code: views read `state` and call `update()` after changing it. htm drops whitespace containing a newline, so use `${" "}` where a space between elements on separate lines matters. The bundled Preact sets a `<select>`'s `value` before its options exist, so mark the chosen `<option>` with `selected` instead. Values in `html` templates are escaped; never set `innerHTML`.
 - UI style: no coloured stripes down the side of cards or rows. Use tints, status dots or badges. Show update buttons only when there's something to update. Say "Update packages", not "Update OS".
 - Defaults stay conservative: automatic updates are off globally and per container until the user opts in, snapshots are opt-in for updates (but ticked by default for Debian release upgrades), and restarts after package updates default to "only if needed".
 - Use `info@dsmithtech.com` for any contact or maintainer address in the repo, never a personal address.

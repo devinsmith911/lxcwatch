@@ -230,16 +230,10 @@ for _path in PUBLIC_FILES:
 # The dashboard's own files. They need a sign-in like the page itself, and
 # no-cache so an upgrade never pairs a new page with old scripts.
 APP_FILES = {
-    "/css/app.css": "text/css",
-    "/js/core.js": "text/javascript",
-    "/js/table.js": "text/javascript",
-    "/js/update-all.js": "text/javascript",
-    "/js/auto.js": "text/javascript",
-    "/js/dialogs.js": "text/javascript",
-    "/js/activity.js": "text/javascript",
-    "/js/status.js": "text/javascript",
-    "/js/details.js": "text/javascript",
-    "/js/main.js": "text/javascript",
+    f"/{folder}/{name}": {".css": "text/css", ".js": "text/javascript"}[os.path.splitext(name)[1]]
+    for folder in ("css", "js", "vendor")
+    for name in sorted(os.listdir(os.path.join(STATIC, folder)))
+    if name.endswith((".css", ".js"))
 }
 
 

@@ -101,7 +101,6 @@ def test_dashboard_files_are_served_only_after_sign_in(client):
     assert page.status_code == 200
     paths = re.findall(r'(?:src|href)="(/(?:js|css)/[^"]+)"', page.text)
     assert "/js/main.js" in paths and "/css/app.css" in paths
-    assert paths[-1] == "/js/main.js"  # it starts the app, so everything else must load first
     for path in paths:
         assert client.get(path, follow_redirects=False).status_code == 303
         r = client.get(path, headers={"Authorization": good})
@@ -111,9 +110,25 @@ def test_dashboard_files_are_served_only_after_sign_in(client):
 
 def test_every_dashboard_file_has_a_route(client):
     static = os.path.join(os.path.dirname(config.__file__), "static")
-    on_disk = {f"/{d}/{name}" for d in ("css", "js") for name in os.listdir(os.path.join(static, d))}
+    on_disk = {f"/{d}/{name}" for d in ("css", "js", "vendor") for name in os.listdir(os.path.join(static, d)) if name.endswith((".css", ".js"))}
     routes = {r.path for r in client.app.routes}
-    assert on_disk and on_disk <= routes
+    assert "/vendor/preact-htm.js" in on_disk and on_disk <= routes
+
+
+def test_every_imported_module_is_served(client):
+    good = "Basic " + base64.b64encode(b"admin:s3cret").decode()
+    seen, todo = set(), ["/js/main.js"]
+    while todo:
+        path = todo.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        r = client.get(path, headers={"Authorization": good})
+        assert r.status_code == 200, path
+        if path.startswith("/js/"):
+            for target in re.findall(r'from "([^"]+)"', r.text):
+                todo.append(target if target.startswith("/") else "/js/" + target.removeprefix("./"))
+    assert {"/js/core.js", "/js/details.js", "/vendor/preact-htm.js"} <= seen
 
 
 def test_basic_auth_still_works(client):
