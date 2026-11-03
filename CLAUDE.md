@@ -13,7 +13,7 @@ Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built aroun
 - `lxcwatch/auto.py`: automatic updates: settings (kv `auto_settings`), the maintenance window, planning per container policy (`auto_policy` table), pausing after failures, the run summary.
 - `lxcwatch/release.py`: Debian release upgrades (pre-checks, source switching).
 - `lxcwatch/notify.py`: ntfy, Pushover and webhook notifications, each item once (the `notified` table).
-- `lxcwatch/auth.py`: signed session cookies and the login lockout; basic auth still works for API clients.
+- `lxcwatch/auth.py`: signed session cookies, the login lockout and Cloudflare Access JWT checks; basic auth still works for API clients.
 - `lxcwatch/db.py`: SQLite. New columns are added in `DB.__init__` with `PRAGMA table_info` plus `ALTER TABLE`, so existing installs upgrade in place.
 - `lxcwatch/static/index.html`: the page's markup. `login.html` is the sign-in page.
 - `lxcwatch/static/css/app.css`: the dashboard's styles.

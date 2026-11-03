@@ -130,8 +130,9 @@ document.addEventListener("click", e => {
   if (a) { e.preventDefault(); openSettings(); }
 });
 $("#logoutbtn").addEventListener("click", async () => {
-  try { await api("/api/logout", { method: "POST" }); } catch {}
-  location.replace("/login");
+  let target = "/login";
+  try { target = (await api("/api/logout", { method: "POST" })).redirect; } catch {}
+  location.replace(target);
 });
 document.querySelectorAll("[data-themeset]").forEach(b => b.addEventListener("click", () => {
   theme = b.dataset.themeset;

@@ -1,14 +1,23 @@
+import asyncio
 import base64
 import dataclasses
+import hashlib
+import hmac
 import importlib
+import json
 import os
 import re
 import time
 
+import httpx
+import jwt
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from jwt.algorithms import RSAAlgorithm
 
 from lxcwatch import config
-from lxcwatch.auth import COOKIE, MAX_FAILURES, Auth
+from lxcwatch.auth import ACCESS_KEYS_MAX_AGE, ACCESS_UNKNOWN_KEY_RETRY, COOKIE, MAX_FAILURES, Auth
 
 
 @pytest.fixture
@@ -159,3 +168,186 @@ def test_manual_snapshot_api(client, monkeypatch):
     assert post({"name": "ok", "description": "d" * 201}).status_code == 409
     assert post({"name": "manual-2"}).status_code == 200
     assert post({"name": "manual-3"}).status_code == 409  # a job is already running on it
+
+
+# Cloudflare Access
+
+TEAM, AUD = "myteam", "aud-tag"
+ISSUER = f"https://{TEAM}.cloudflareaccess.com"
+
+
+@pytest.fixture(scope="module")
+def rsa_key():
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+def jwks(key, kid="k1"):
+    return {"keys": [{**RSAAlgorithm.to_jwk(key.public_key(), as_dict=True), "kid": kid, "use": "sig", "alg": "RS256"}]}
+
+
+def token(key, kid="k1", **claims):
+    body = {"aud": [AUD], "iss": ISSUER, "email": "me@example.com", "exp": int(time.time()) + 600, **claims}
+    return jwt.encode({k: v for k, v in body.items() if v is not None}, key, algorithm="RS256", headers={"kid": kid})
+
+
+@pytest.fixture
+def access_client(cfg, monkeypatch, rsa_key):
+    from fastapi.testclient import TestClient
+    import lxcwatch.app as app_module
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_ENABLED", "true")
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_TEAM", TEAM)
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_AUD", AUD)
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_EMAILS", "Me@Example.com, other@example.com")
+    app_module = importlib.reload(app_module)
+    async def fetch():
+        return jwks(rsa_key)
+    monkeypatch.setattr(app_module.auth, "_fetch_access_jwks", fetch)
+    return TestClient(app_module.app, base_url="http://testserver")
+
+
+def access(tok):
+    return {"Cf-Access-Jwt-Assertion": tok}
+
+
+def test_access_token_signs_in(access_client, rsa_key):
+    h = access(token(rsa_key))
+    assert access_client.get("/api/containers", headers=h).status_code == 200
+    assert access_client.get("/", headers=h, follow_redirects=False).status_code == 200
+    assert access_client.get("/login", headers=h, follow_redirects=False).status_code == 303
+    assert access_client.get("/api/containers", headers=access(token(rsa_key, email="OTHER@example.com"))).status_code == 200
+    assert "set-cookie" not in access_client.get("/api/containers", headers=h).headers
+    assert access_client.get("/api/containers").status_code == 401  # the header is what signs in
+
+
+def test_page_is_told_how_you_signed_in(access_client, rsa_key):
+    good = "Basic " + base64.b64encode(b"admin:s3cret").decode()
+    who = lambda **h: access_client.get("/api/containers", headers=h).json()["access_email"]
+    assert who(**access(token(rsa_key, email="ME@example.com"))) == "me@example.com"
+    assert who(Authorization=good) is None
+    assert who(Authorization=good, **access(token(rsa_key, email="mallory@example.com"))) is None
+    assert access_client.post("/api/login", json={"username": "admin", "password": "s3cret"}, headers=H).status_code == 200
+    assert who() is None
+    assert who(**access(token(rsa_key))) == "me@example.com"  # both: Access is what shows
+    assert access_client.post("/api/logout", headers={**access(token(rsa_key)), **H}).json()["redirect"] == "/cdn-cgi/access/logout"
+
+
+def test_access_rejects_bad_tokens(access_client, rsa_key):
+    other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = int(time.time())
+    public_pem = rsa_key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+    bad = {
+        "not on the allowlist": token(rsa_key, email="mallory@example.com"),
+        "service token, no email": token(rsa_key, email=None, common_name="abc.access"),
+        "another application": token(rsa_key, aud=["other-aud"]),
+        "no audience": token(rsa_key, aud=None),
+        "another team": token(rsa_key, iss="https://evil.cloudflareaccess.com"),
+        "no issuer": token(rsa_key, iss=None),
+        "expired": token(rsa_key, exp=now - 3600),
+        "no expiry": token(rsa_key, exp=None),
+        "not valid yet": token(rsa_key, nbf=now + 3600),
+        "forged signature": token(other),
+        "unknown key": token(other, kid="k2"),
+        "unsigned": jwt.encode({"aud": [AUD], "iss": ISSUER, "email": "me@example.com", "exp": now + 600},
+                               None, algorithm="none", headers={"kid": "k1"}),
+        "garbage": "not.a.jwt",
+        "tampered": token(rsa_key)[:-4] + "AAAA",
+    }
+    enc = lambda raw: base64.urlsafe_b64encode(raw).rstrip(b"=")
+    signing = enc(json.dumps({"alg": "HS256", "kid": "k1"}).encode()) + b"." + enc(json.dumps(
+        {"aud": [AUD], "iss": ISSUER, "email": "me@example.com", "exp": now + 600}).encode())
+    # The classic algorithm confusion: HMAC keyed with the public key.
+    bad["hmac with the public key"] = (signing + b"." + enc(hmac.new(public_pem, signing, hashlib.sha256).digest())).decode()
+    for why, tok in bad.items():
+        assert access_client.get("/api/containers", headers=access(tok)).status_code == 401, why
+    r = access_client.get("/", headers=access(bad["forged signature"]), follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+
+
+def test_access_ignored_unless_configured(client, rsa_key):
+    assert client.get("/api/containers", headers=access(token(rsa_key))).status_code == 401
+
+
+def test_access_off_ignores_its_settings(access_client, rsa_key, monkeypatch):
+    from fastapi.testclient import TestClient
+    import lxcwatch.app as app_module
+    h = access(token(rsa_key))
+    assert access_client.get("/api/containers", headers=h).status_code == 200
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_ENABLED", "false")
+    app_module = importlib.reload(app_module)
+    fetches = []
+    async def fetch():
+        fetches.append(1)
+        return jwks(rsa_key)
+    monkeypatch.setattr(app_module.auth, "_fetch_access_jwks", fetch)
+    off = TestClient(app_module.app, base_url="http://testserver")
+    assert off.get("/api/containers", headers=h).status_code == 401
+    assert off.get("/login", headers=h, follow_redirects=False).status_code == 200
+    assert not fetches  # no calls out to Cloudflare either
+
+
+def test_access_requests_still_need_the_csrf_header(access_client, rsa_key):
+    h = access(token(rsa_key))
+    assert access_client.post("/api/scan", headers=h).status_code == 403
+
+
+def test_sign_out_ends_the_access_session(access_client, rsa_key):
+    r = access_client.post("/api/logout", headers={**access(token(rsa_key)), **H})
+    assert r.json()["redirect"] == "/cdn-cgi/access/logout"
+    good = "Basic " + base64.b64encode(b"admin:s3cret").decode()
+    r = access_client.post("/api/logout", headers={"Authorization": good, **H})
+    assert r.json()["redirect"] == "/login"
+
+
+def test_password_still_works_with_access_configured(access_client):
+    r = access_client.post("/api/login", json={"username": "admin", "password": "s3cret"}, headers=H)
+    assert r.status_code == 200
+    assert access_client.get("/api/containers").status_code == 200
+
+
+def test_access_key_rotation_and_fetch_limits(cfg, rsa_key, monkeypatch):
+    access_cfg = dataclasses.replace(cfg, cf_access_team=TEAM, cf_access_aud=AUD, cf_access_emails=frozenset({"me@example.com"}))
+    auth = Auth(access_cfg)
+    new_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    fetches, served = [], [jwks(rsa_key)]
+    async def fetch():
+        fetches.append(1)
+        if isinstance(served[0], Exception):
+            raise served[0]
+        return served[0]
+    monkeypatch.setattr(auth, "_fetch_access_jwks", fetch)
+    check = lambda tok: asyncio.run(auth.check_access(tok))
+
+    assert check(token(rsa_key)) and check(token(rsa_key)) and len(fetches) == 1
+
+    # Unknown keys can't drive a fetch per request.
+    assert not check(token(new_key, kid="k2")) and not check(token(new_key, kid="k3")) and len(fetches) == 1
+
+    # A rotated key is picked up once the retry window passes, and the old one is dropped.
+    served[0] = jwks(new_key, kid="k2")
+    auth.access_keys_checked -= ACCESS_UNKNOWN_KEY_RETRY
+    assert check(token(new_key, kid="k2")) and len(fetches) == 2
+    assert not check(token(rsa_key))
+
+    # An outage keeps the known keys in use.
+    served[0] = httpx.ConnectError("down")
+    auth.access_keys_checked -= ACCESS_KEYS_MAX_AGE
+    assert check(token(new_key, kid="k2")) and len(fetches) == 3
+
+
+def test_access_config(cfg, monkeypatch):
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_TEAM", "https://MyTeam.cloudflareaccess.com/")
+    assert config.load().cf_access_team is None  # off unless enabled, whatever else is set
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_ENABLED", "true")
+    with pytest.raises(SystemExit):  # enabling needs all three
+        config.load()
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_AUD", AUD)
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_EMAILS", " A@example.com ,b@example.com,")
+    loaded = config.load()
+    assert loaded.cf_access_team == "myteam"
+    assert loaded.cf_access_emails == {"a@example.com", "b@example.com"}
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_TEAM", "evil.example.com/x")
+    with pytest.raises(SystemExit):
+        config.load()
+    monkeypatch.setenv("LXCWATCH_CF_ACCESS_ENABLED", "false")
+    assert config.load().cf_access_team is None  # a bad value can't stop startup while it's off

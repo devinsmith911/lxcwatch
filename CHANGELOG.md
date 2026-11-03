@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Sign in through Cloudflare Access, off until you turn it on. Enable it and set your team name, the application's audience tag and the allowed email addresses, and those people go straight to the dashboard without the sign-in page. A badge in the header shows when you're signed in this way, and the menu shows the email. **Sign out** also ends the Access session. The README's **Things to know** section has the settings.
+
 ## 2.1.0 (2026-11-03)
 
 ### Changed

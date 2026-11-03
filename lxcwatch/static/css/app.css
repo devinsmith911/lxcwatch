@@ -44,10 +44,14 @@ header.hero .hbtn, header.hero .conn summary.hbtn { box-sizing: border-box; heig
   background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); color: var(--hero-text); }
 header.hero .hbtn:hover, header.hero .conn summary.hbtn:hover { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.5); }
 header.hero .hbtn.icon { width: 32px; padding: 0; }
+header.hero .accessbadge, header.hero .accessbadge:hover { background: rgba(92,240,164,.18); border-color: rgba(92,240,164,.5); cursor: default; }
+header.hero .accessbadge[hidden] { display: none; }
 header.hero details[open] > summary.hbtn { background: rgba(255,255,255,.26); }
 .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .menu .pop { width: 280px; padding: 6px; border-radius: 10px; }
 .menu .pop .menusec { display: block; padding: 8px 8px 10px; }
+.menu .pop .menusec[hidden] { display: none; }
+#accessemail { font-size: 13px; overflow-wrap: anywhere; }
 .menu .pop .menulabel { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 500; }
 .menu .pop .menurow { align-items: baseline; padding: 4px 8px 8px; font-size: 13px; }
 .menu .pop hr { border: 0; border-top: 1px solid var(--border); margin: 0 0 6px; }

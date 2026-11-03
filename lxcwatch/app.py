@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from pydantic import BaseModel
 
 from . import __version__, auto, config, notify
-from .auth import COOKIE, Auth
+from .auth import ACCESS_HEADER, ACCESS_LOGOUT, COOKIE, Auth
 from .batch import BatchError, Batches
 from .cluster import Cluster, stored_self_update
 from .db import DB
@@ -131,7 +131,10 @@ async def auth_middleware(request: Request, call_next):
         return JSONResponse({"detail": "missing X-Requested-With header"}, status_code=403)
     if path in OPEN_PATHS or path in PUBLIC_FILES:
         return await call_next(request)
-    if auth.check_session(request.cookies.get(COOKIE)) or auth.check_basic(request.headers.get("authorization", "")):
+    # Access goes first so the page can show it even alongside a password session.
+    request.state.access_email = await auth.check_access(request.headers.get(ACCESS_HEADER))
+    if (request.state.access_email or auth.check_session(request.cookies.get(COOKIE))
+            or auth.check_basic(request.headers.get("authorization", ""))):
         return await call_next(request)
     if path.startswith("/api/"):
         return JSONResponse({"detail": "not signed in"}, status_code=401)
@@ -150,7 +153,7 @@ class LoginRequest(BaseModel):
 
 @app.get("/login")
 async def login_page(request: Request):
-    if auth.check_session(request.cookies.get(COOKIE)):
+    if auth.check_session(request.cookies.get(COOKIE)) or await auth.check_access(request.headers.get(ACCESS_HEADER)):
         return RedirectResponse("/", status_code=303)
     return FileResponse(os.path.join(STATIC, "login.html"), headers={"Cache-Control": "no-cache"})
 
@@ -173,8 +176,9 @@ async def login(req: LoginRequest, request: Request):
 
 
 @app.post("/api/logout")
-async def logout():
-    resp = JSONResponse({"ok": True})
+async def logout(request: Request):
+    # Access would sign the browser straight back in, so end that session too.
+    resp = JSONResponse({"ok": True, "redirect": ACCESS_LOGOUT if request.state.access_email else "/login"})
     resp.delete_cookie(COOKIE, path="/")
     return resp
 
@@ -321,7 +325,7 @@ def _summary(ct: dict, policies: dict[int, dict] | None = None, last_run: dict |
 
 
 @app.get("/api/containers")
-async def containers():
+async def containers(request: Request):
     last = db.get("last_scan")
     return {
         "containers": summaries(),
@@ -336,6 +340,7 @@ async def containers():
         "batch": batches.current,
         "self_update": stored_self_update(db),
         "version": __version__,
+        "access_email": request.state.access_email,
         "connection": {
             "host": cfg.pve_host,
             "user": cfg.ssh_user,

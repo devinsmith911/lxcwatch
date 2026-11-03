@@ -27,6 +27,12 @@ function renderConn(conn) {
   }
 }
 
+function renderAccess(email) {
+  $("#accessbadge").hidden = $("#accessrow").hidden = !email;
+  $("#accessbadge").title = email ? `Signed in as ${email} through Cloudflare Access` : "";
+  $("#accessemail").textContent = email || "";
+}
+
 async function refresh() {
   try {
     state.data = await api("/api/containers");

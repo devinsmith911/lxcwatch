@@ -90,6 +90,7 @@ function render() {
   const cs = d.containers;
   const s = d.scan;
   renderConn(d.connection);
+  renderAccess(d.access_email);
   $("#version").textContent = d.version && d.version !== "dev" ? d.version : "development build";
   renderBatch(d.batch);
   const next = s.next_at ? ` · next ${until(s.next_at)}` : s.interval_minutes > 0 ? "" : " · scheduled scans off";

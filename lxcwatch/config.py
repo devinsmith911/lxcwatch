@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass
 
 
@@ -22,6 +23,16 @@ def _node_addresses(raw: str | None) -> dict[str, str]:
             name, addr = part.split("=", 1)
             out[name.strip()] = addr.strip()
     return out
+
+
+def _cf_team(raw: str | None) -> str | None:
+    # "myteam", "myteam.cloudflareaccess.com" or the full https:// URL
+    if not raw:
+        return None
+    team = raw.strip().lower().removeprefix("https://").rstrip("/").removesuffix(".cloudflareaccess.com")
+    if not re.fullmatch(r"[a-z0-9-]+", team):
+        raise SystemExit("LXCWATCH_CF_ACCESS_TEAM must be your team name, as in <team>.cloudflareaccess.com")
+    return team
 
 
 @dataclass(frozen=True)
@@ -50,6 +61,9 @@ class Config:
     webhook_url: str | None
     notify_packages: str  # none | security | all
     public_url: str | None
+    cf_access_team: str | None  # team name, as in <team>.cloudflareaccess.com; None when Access is off
+    cf_access_aud: str | None
+    cf_access_emails: frozenset[str]  # lowercase; these sign in as the one account
 
     @property
     def sudo(self) -> bool:
@@ -71,6 +85,13 @@ def load() -> Config:
     notify_packages = (_env("NOTIFY_PACKAGES", "security") or "security").lower()
     if notify_packages not in ("none", "security", "all"):
         raise SystemExit("LXCWATCH_NOTIFY_PACKAGES must be none, security or all")
+    cf_access_team, cf_access_aud, cf_access_emails = None, None, frozenset()
+    if _bool("CF_ACCESS_ENABLED", False):
+        cf_access_team = _cf_team(_env("CF_ACCESS_TEAM"))
+        cf_access_aud = _env("CF_ACCESS_AUD")
+        cf_access_emails = frozenset(e.strip().lower() for e in (_env("CF_ACCESS_EMAILS") or "").split(",") if e.strip())
+        if not (cf_access_team and cf_access_aud and cf_access_emails):
+            raise SystemExit("LXCWATCH_CF_ACCESS_ENABLED needs LXCWATCH_CF_ACCESS_TEAM, LXCWATCH_CF_ACCESS_AUD and LXCWATCH_CF_ACCESS_EMAILS")
     return Config(
         pve_host=pve_host,
         ssh_user=_env("SSH_USER", "root"),
@@ -97,4 +118,7 @@ def load() -> Config:
         webhook_url=_env("WEBHOOK_URL"),
         notify_packages=notify_packages,
         public_url=_env("PUBLIC_URL"),
+        cf_access_team=cf_access_team,
+        cf_access_aud=cf_access_aud,
+        cf_access_emails=cf_access_emails,
     )

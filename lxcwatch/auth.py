@@ -4,22 +4,38 @@ Sessions are stateless signed cookies: "<user>.<expiry>.<hmac>". The HMAC key
 mixes a random secret kept in the data dir with the configured password, so
 changing the password signs everyone out. Basic auth keeps working for API
 clients and scripts.
+
+With Cloudflare Access configured, a request is also signed in by a valid
+Access JWT whose email is on the allowlist. It's checked on every request, so
+there is no lxcwatch session to outlive a revocation in Access.
 """
 
+import asyncio
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import time
 from collections import defaultdict, deque
 
+import httpx
+import jwt
+
 from .config import Config
+
+log = logging.getLogger("lxcwatch")
 
 COOKIE = "lxcwatch_session"
 SESSION_DAYS = 30
 MAX_FAILURES = 10
 LOCKOUT_SECONDS = 15 * 60
+ACCESS_HEADER = "cf-access-jwt-assertion"
+ACCESS_LOGOUT = "/cdn-cgi/access/logout"
+ACCESS_KEYS_MAX_AGE = 3600
+ACCESS_UNKNOWN_KEY_RETRY = 60  # tokens can name any key; don't let them drive fetches
+ACCESS_LEEWAY = 60
 
 
 class Auth:
@@ -34,6 +50,9 @@ class Auth:
             secret = f.read()
         self.key = hashlib.sha256(secret + cfg.password.encode()).digest()
         self.failures: dict[str, deque[float]] = defaultdict(deque)
+        self.access_keys: dict[str, object] = {}
+        self.access_keys_checked = 0.0
+        self.access_keys_lock = asyncio.Lock()
 
     def check_credentials(self, user: str, password: str) -> bool:
         ok_user = secrets.compare_digest(user.encode(), self.cfg.username.encode())
@@ -65,6 +84,51 @@ class Auth:
         if not hmac.compare_digest(sig, self._sign(payload)):
             return False
         return user == self.cfg.username and expiry.isdigit() and int(expiry) > time.time()
+
+    # Cloudflare Access
+
+    async def _fetch_access_jwks(self) -> dict:
+        url = f"https://{self.cfg.cf_access_team}.cloudflareaccess.com/cdn-cgi/access/certs"
+        async with httpx.AsyncClient(timeout=5) as http:
+            r = await http.get(url)
+            r.raise_for_status()
+            return r.json()
+
+    async def _access_key(self, kid: str | None):
+        async with self.access_keys_lock:
+            age = time.time() - self.access_keys_checked
+            if age >= (ACCESS_KEYS_MAX_AGE if kid in self.access_keys else ACCESS_UNKNOWN_KEY_RETRY):
+                self.access_keys_checked = time.time()
+                try:
+                    jwks = jwt.PyJWKSet.from_dict(await self._fetch_access_jwks())
+                    self.access_keys = {k.key_id: k.key for k in jwks.keys}
+                except (httpx.HTTPError, ValueError, jwt.PyJWTError) as e:
+                    # Known keys stay in use, so a Cloudflare blip doesn't lock anyone out.
+                    log.warning("could not fetch Cloudflare Access keys: %s", e)
+            return self.access_keys.get(kid)
+
+    async def check_access(self, token: str | None) -> str | None:
+        """The signed-in email, or None."""
+        if not token or not self.cfg.cf_access_team:
+            return None
+        try:
+            key = await self._access_key(jwt.get_unverified_header(token).get("kid"))
+            if not key:
+                log.warning("Cloudflare Access token signed with an unknown key")
+                return None
+            claims = jwt.decode(
+                token, key, algorithms=["RS256"], audience=self.cfg.cf_access_aud,
+                issuer=f"https://{self.cfg.cf_access_team}.cloudflareaccess.com",
+                leeway=ACCESS_LEEWAY, options={"require": ["exp", "aud", "iss"]},
+            )
+        except jwt.PyJWTError as e:
+            log.warning("rejected Cloudflare Access token: %s", e)
+            return None
+        email = str(claims.get("email", "")).lower()
+        if email not in self.cfg.cf_access_emails:  # service tokens have no email
+            log.warning("Cloudflare Access identity %r is not in LXCWATCH_CF_ACCESS_EMAILS", email or claims.get("common_name"))
+            return None
+        return email
 
     # brute-force guard
 
