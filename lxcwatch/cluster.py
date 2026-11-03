@@ -67,6 +67,10 @@ class Cluster:
             raise RuntimeError(f"pvesh get {path} failed: {r.err.strip() or r.rc}")
         return json.loads(r.out)
 
+    def forget_ignored(self) -> None:
+        """Drop containers on ignored nodes now, rather than at the next scan."""
+        self.db.forget_missing({ct["vmid"] for ct in self.db.containers() if ct["node"] not in self.cfg.ignore_nodes})
+
     async def discover(self) -> list[dict]:
         try:
             status = await self.pvesh("/cluster/status")
@@ -79,14 +83,14 @@ class Cluster:
         for entry in status:
             if entry.get("type") == "cluster":
                 self.cluster_name = entry.get("name")
-            elif entry.get("type") == "node":
+            elif entry.get("type") == "node" and entry["name"] not in self.cfg.ignore_nodes:
                 nodes[entry["name"]] = entry.get("ip") or (self.cfg.pve_host if entry.get("local") else entry["name"])
                 info.append({"name": entry["name"], "address": self.addr_override(entry["name"]) or nodes[entry["name"]],
                              "online": bool(entry.get("online", 1)), "local": bool(entry.get("local"))})
         self.nodes = nodes
         self.node_info = sorted(info, key=lambda n: n["name"])
         resources = await self.pvesh("/cluster/resources --type vm")
-        cts = [r for r in resources if r.get("type") == "lxc" and not r.get("template")]
+        cts = [r for r in resources if r.get("type") == "lxc" and not r.get("template") and r.get("node") not in self.cfg.ignore_nodes]
         for ct in cts:
             # Proxmox reports uptime in seconds for running containers.
             uptime = ct.get("uptime") if ct.get("status") == "running" else None

@@ -129,7 +129,8 @@ lxcwatch reads its settings from environment variables, which the package keeps 
 | `LXCWATCH_SSH_USER` | `root` | A non-root user needs passwordless `sudo` for `pct` and `pvesh` |
 | `LXCWATCH_SSH_PORT` | `22` | SSH port on the Proxmox nodes |
 | `LXCWATCH_SSH_KEY` | — | Path to the SSH private key. The package sets this for you |
-| `LXCWATCH_NODE_ADDRESSES` | — | `pve1=10.0.0.11,...` if the node addresses Proxmox reports aren't reachable |
+| `LXCWATCH_NODE_ADDRESSES` | — | `pve1=10.0.0.11,...` if the node addresses Proxmox reports aren't reachable. This only changes where lxcwatch connects: nodes you don't list are still used, at the address Proxmox reports |
+| `LXCWATCH_IGNORE_NODES` | — | `pve3,...` to leave nodes and their containers out. lxcwatch won't connect to them, and forgets those containers' scan results and automatic update settings. `LXCWATCH_PVE_HOST` must be a different node |
 | `LXCWATCH_SCAN_INTERVAL_MINUTES` | `360` | `0` disables scheduled scans |
 | `LXCWATCH_SCAN_ON_STARTUP` | `overdue` | `overdue`: scan at startup only if the last scan is older than the interval; `always`; `never` |
 | `LXCWATCH_REFRESH_PACKAGES` | `true` | Runs `apt-get update` / `apk update` during scans |

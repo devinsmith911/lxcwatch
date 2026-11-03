@@ -42,6 +42,7 @@ class Config:
     ssh_port: int
     ssh_key: str | None
     node_addresses: dict[str, str]
+    ignore_nodes: frozenset[str]
     username: str
     password: str
     data_dir: str
@@ -98,6 +99,7 @@ def load() -> Config:
         ssh_port=int(_env("SSH_PORT", "22")),
         ssh_key=_env("SSH_KEY"),
         node_addresses=_node_addresses(_env("NODE_ADDRESSES")),
+        ignore_nodes=frozenset(n.strip() for n in (_env("IGNORE_NODES") or "").split(",") if n.strip()),
         username=_env("USERNAME", "admin"),
         password=password,
         data_dir=_env("DATA_DIR", "./data"),

@@ -134,7 +134,7 @@ def test_discover_records_start_time(tmp_path, monkeypatch):
     monkeypatch.setattr(time, "time", lambda: 10_000.0)
     db = DB(str(tmp_path))
     cl = Cluster.__new__(Cluster)
-    cl.db, cl.cfg, cl.nodes = db, type("C", (), {"pve_host": "h", "node_addresses": {}})(), {}
+    cl.db, cl.cfg, cl.nodes = db, type("C", (), {"pve_host": "h", "node_addresses": {}, "ignore_nodes": frozenset()})(), {}
 
     async def pvesh(path, host=None, timeout=60):
         if path == "/cluster/status":
@@ -145,3 +145,38 @@ def test_discover_records_start_time(tmp_path, monkeypatch):
     asyncio.run(cl.discover())
     assert db.container(101)["started_at"] == 10_000.0 - 3600
     assert db.container(102)["started_at"] is None
+
+
+def test_ignored_nodes_are_left_out(tmp_path):
+    from lxcwatch.cluster import Cluster
+    from lxcwatch.db import DB
+    db = DB(str(tmp_path))
+    db.upsert_seen(103, "pve3", "known", "running", "", None)
+    cl = Cluster.__new__(Cluster)
+    cl.db, cl.cfg, cl.nodes = db, type("C", (), {"pve_host": "h", "node_addresses": {}, "ignore_nodes": frozenset({"pve3"})})(), {}
+
+    async def pvesh(path, host=None, timeout=60):
+        if path == "/cluster/status":
+            return [{"type": "node", "name": "pve1", "ip": "10.0.0.1", "online": 1},
+                    {"type": "node", "name": "pve3", "ip": "10.0.0.3", "online": 0}]
+        return [{"type": "lxc", "vmid": 101, "node": "pve1", "name": "kept", "status": "running"},
+                {"type": "lxc", "vmid": 103, "node": "pve3", "name": "skipped", "status": "running"}]
+    cl.pvesh = pvesh
+    cts = asyncio.run(cl.discover())
+    assert [ct["vmid"] for ct in cts] == [101]
+    assert list(cl.nodes) == ["pve1"]
+    assert [n["name"] for n in cl.node_info] == ["pve1"]
+    assert db.container(103) is None
+
+
+def test_forget_ignored_drops_rows_before_any_scan(tmp_path):
+    from lxcwatch.cluster import Cluster
+    from lxcwatch.db import DB
+    db = DB(str(tmp_path))
+    db.upsert_seen(101, "pve1", "kept", "running", "", None)
+    db.upsert_seen(103, "pve3", "skipped", "running", "", None)
+    cl = Cluster.__new__(Cluster)
+    cl.db, cl.cfg = db, type("C", (), {"ignore_nodes": frozenset({"pve3"})})()
+    cl.forget_ignored()
+    assert db.container(101) is not None
+    assert db.container(103) is None

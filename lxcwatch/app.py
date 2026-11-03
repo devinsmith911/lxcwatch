@@ -105,6 +105,7 @@ async def scheduler() -> None:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
+    cluster.forget_ignored()
     jobs.resume()
     # Refresh lxcwatch's own update notice now rather than at the next scan.
     jobs._spawn(cluster.check_self_update())

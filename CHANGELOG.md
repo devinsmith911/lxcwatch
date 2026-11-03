@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `LXCWATCH_IGNORE_NODES` leaves nodes and their containers out of lxcwatch, for example `LXCWATCH_IGNORE_NODES=pve3`. lxcwatch won't connect to those nodes, and it forgets their containers' scan results and automatic update settings, so turn automatic updates back on if you stop ignoring a node.
+
 ## 2.3.2 (2026-11-03)
 
 ### Fixed
