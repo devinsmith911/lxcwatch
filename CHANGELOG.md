@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.0 (2026-11-03)
+
+### Changed
+- The dashboard was rebuilt on a small UI library. It looks and works the same, but the page now updates only what changed instead of redrawing, so refreshes no longer disturb what you're doing.
+- Keyboard focus stays where it is during refreshes and returns to your button when you close the side panel.
+- The **Update all** dialog keeps its list current while it's open.
+- A failed refresh now stays visible until a refresh succeeds.
+
+### Fixed
+- After a failed release upgrade pre-check, the dialog's button no longer shows text left over from an earlier check.
+
 ## 2.2.0 (2026-11-03)
 
 ### Added
