@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from pydantic import BaseModel
 
 from . import __version__, auto, config, notify
-from .auth import ACCESS_HEADER, ACCESS_LOGOUT, COOKIE, Auth
+from .auth import ACCESS_HEADER, COOKIE, Auth
 from .batch import BatchError, Batches
 from .cluster import Cluster, stored_self_update
 from .db import DB
@@ -176,9 +176,8 @@ async def login(req: LoginRequest, request: Request):
 
 
 @app.post("/api/logout")
-async def logout(request: Request):
-    # Access would sign the browser straight back in, so end that session too.
-    resp = JSONResponse({"ok": True, "redirect": ACCESS_LOGOUT if request.state.access_email else "/login"})
+async def logout():
+    resp = JSONResponse({"ok": True})
     resp.delete_cookie(COOKIE, path="/")
     return resp
 

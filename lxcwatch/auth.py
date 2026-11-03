@@ -32,7 +32,6 @@ SESSION_DAYS = 30
 MAX_FAILURES = 10
 LOCKOUT_SECONDS = 15 * 60
 ACCESS_HEADER = "cf-access-jwt-assertion"
-ACCESS_LOGOUT = "/cdn-cgi/access/logout"
 ACCESS_KEYS_MAX_AGE = 3600
 ACCESS_UNKNOWN_KEY_RETRY = 60  # tokens can name any key; don't let them drive fetches
 ACCESS_LEEWAY = 60

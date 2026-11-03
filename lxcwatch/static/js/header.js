@@ -21,9 +21,8 @@ function setTheme(t) {
 }
 
 async function signOut() {
-  let target = "/login";
-  try { target = (await api("/api/logout", { method: "POST" })).redirect || target; } catch {}
-  location.replace(target);
+  try { await api("/api/logout", { method: "POST" }); } catch {}
+  location.replace("/login");
 }
 
 function SelfUpdate() {
@@ -59,6 +58,8 @@ function Connection() {
 const ThemeButton = ({ value, label, title, children }) => html`
   <button class=${theme === value ? "on" : ""} title=${title} onClick=${() => setTheme(value)}><${Icon}>${children}<//>${label}</button>`;
 
+// No Sign out under Cloudflare Access: Access would sign the browser straight
+// back in, and its logout ends the session for every Access app.
 function Menu() {
   const v = state.data?.version, email = state.data?.access_email;
   return html`<details class="conn menu" id="menu">
@@ -75,7 +76,7 @@ function Menu() {
         <a href="https://github.com/devinsmith911/lxcwatch/releases" target="_blank" rel="noopener" class="ext">Release notes</a></div>
       <hr />
       <button id="settingsbtn" class="menuitem" onClick=${openSettings}><${Icon}><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/><//>Settings…</button>
-      <button id="logoutbtn" class="menuitem" onClick=${signOut}><${Icon}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/><//>Sign out</button>
+      ${!email && html`<button id="logoutbtn" class="menuitem" onClick=${signOut}><${Icon}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/><//>Sign out</button>`}
     </div>
   </details>`;
 }

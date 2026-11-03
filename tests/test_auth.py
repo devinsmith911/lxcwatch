@@ -243,7 +243,6 @@ def test_page_is_told_how_you_signed_in(access_client, rsa_key):
     assert access_client.post("/api/login", json={"username": "admin", "password": "s3cret"}, headers=H).status_code == 200
     assert who() is None
     assert who(**access(token(rsa_key))) == "me@example.com"  # both: Access is what shows
-    assert access_client.post("/api/logout", headers={**access(token(rsa_key)), **H}).json()["redirect"] == "/cdn-cgi/access/logout"
 
 
 def test_access_rejects_bad_tokens(access_client, rsa_key):
@@ -306,12 +305,9 @@ def test_access_requests_still_need_the_csrf_header(access_client, rsa_key):
     assert access_client.post("/api/scan", headers=h).status_code == 403
 
 
-def test_sign_out_ends_the_access_session(access_client, rsa_key):
+def test_sign_out_leaves_the_access_session_alone(access_client, rsa_key):
     r = access_client.post("/api/logout", headers={**access(token(rsa_key)), **H})
-    assert r.json()["redirect"] == "/cdn-cgi/access/logout"
-    good = "Basic " + base64.b64encode(b"admin:s3cret").decode()
-    r = access_client.post("/api/logout", headers={"Authorization": good, **H})
-    assert r.json()["redirect"] == "/login"
+    assert r.status_code == 200 and r.json() == {"ok": True}
 
 
 def test_password_still_works_with_access_configured(access_client):
