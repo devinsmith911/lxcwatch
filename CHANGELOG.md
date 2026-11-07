@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Click a column heading to sort the container table by it. Click again to reverse the order, and a third time to go back to the usual order. On a phone, use the **Sort** menu in the toolbar instead. Your choice is remembered in this browser. Containers with nothing to show in that column (no tags, no package manager, stopped for Uptime) always go last.
+
 ## 2.4.0 (2026-11-07)
 
 ### Added

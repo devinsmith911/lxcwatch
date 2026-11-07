@@ -3,9 +3,55 @@ import { AUTO_NAME, AUTO_POLICIES, COLUMNS, DEFAULT_COLUMNS, Ext, KIND_LABEL, ST
 import { attempt, openDetails, openDialog, openJob, refresh, setAutoPolicy, startUpdate } from "./actions.js";
 import { openUpdateAll } from "./dialogs.js";
 
+// How each column sorts: the value to compare, and which way the first click
+// goes. null means "nothing to show" and always sorts last, in either direction.
+const AUTO_RANK = { security: 1, packages: 2, app: 3 };
+const lower = s => s ? s.toLowerCase() : null;
+const SORTS = {
+  container: [c => c.vmid, "asc"],
+  node: [c => lower(c.node), "asc"],
+  tags: [c => lower(c.tags.join(" ")), "asc"],
+  app: [c => lower(c.components[0]?.name || c.script), "asc"],
+  // Security updates count for more than other pending packages.
+  packages: [c => c.pkgmgr ? c.pkg_security * 1e6 + c.pkg_count : null, "desc"],
+  auto: [c => AUTO_RANK[c.auto?.policy] ?? null, "desc"],
+  uptime: [c => c.status === "running" && c.started_at ? -c.started_at : null, "desc"],
+  // Oldest first: never scanned counts as the oldest of all.
+  scanned: [c => c.scanned_at || 0, "asc"],
+};
+
+// The sort in effect: none if its column is hidden.
+const activeSort = () => state.sort && SORTS[state.sort.key] && state.columns.includes(state.sort.key) ? state.sort : null;
+
+function sorted(rows) {
+  const s = activeSort();
+  if (!s) return rows;
+  const value = SORTS[s.key][0], sign = s.dir === "desc" ? -1 : 1;
+  return rows.map(c => [value(c), c]).sort(([a, x], [b, y]) => {
+    if (a === null || b === null) return a === b ? x.vmid - y.vmid : a === null ? 1 : -1;
+    const d = typeof a === "string" ? a.localeCompare(b, undefined, { numeric: true }) : a - b;
+    return d ? d * sign : x.vmid - y.vmid;
+  }).map(([, c]) => c);
+}
+
+function setSort(sort) {
+  state.sort = sort;
+  store("sort", sort);
+  state.page = 1;
+  update();
+}
+
+// Header clicks: first direction, then the other, then back to the usual order.
+function cycleSort(key) {
+  const first = SORTS[key][1], cur = activeSort();
+  if (cur?.key !== key) setSort({ key, dir: first });
+  else if (cur.dir === first) setSort({ key, dir: first === "asc" ? "desc" : "asc" });
+  else setSort(null);
+}
+
 function visible() {
   const q = state.q.toLowerCase();
-  return state.data.containers.filter(c => {
+  return sorted(state.data.containers.filter(c => {
     if (state.hideStopped && c.status !== "running") return false;
     if (state.hideNonScript && notScript(c)) return false;
     if (state.filter === "unknown" && !isUnknown(c)) return false;
@@ -15,7 +61,7 @@ function visible() {
     if (state.filter === "problems" && !problem(c)) return false;
     if (q && ![c.vmid, c.name, c.node, ...c.tags, c.script].join(" ").toLowerCase().includes(q)) return false;
     return true;
-  });
+  }));
 }
 
 // The rows on the current page, keeping the page number in range.
@@ -102,11 +148,33 @@ function ColumnPicker() {
   </details>`;
 }
 
+const colLabel = k => COLUMNS.find(([c]) => c === k)[1];
+
+// Phones have no column headings to click, so they get a select instead.
+function SortPicker() {
+  const s = activeSort();
+  return html`<span class="sortpick only-mobile">
+    <select id="sortsel" aria-label="Sort by" onChange=${e => setSort(e.target.value ? { key: e.target.value, dir: SORTS[e.target.value][1] } : null)}>
+      <option value="" selected=${!s}>Sort: default</option>
+      ${state.columns.map(k => html`<option key=${k} value=${k} selected=${s?.key === k}>Sort: ${colLabel(k)}</option>`)}
+    </select>
+    ${s && html`<button type="button" class="chip" title="Reverse the order" aria-label=${s.dir === "asc" ? "Ascending, reverse" : "Descending, reverse"}
+      onClick=${() => setSort({ ...s, dir: s.dir === "asc" ? "desc" : "asc" })}>${s.dir === "asc" ? "↑" : "↓"}</button>`}
+  </span>`;
+}
+
+function SortHeader({ k }) {
+  const s = activeSort(), on = s?.key === k;
+  return html`<th class="c-${k}" aria-sort=${on ? (s.dir === "asc" ? "ascending" : "descending") : undefined}>
+    <button type="button" class="sorth${on ? " on" : ""}" onClick=${() => cycleSort(k)}>${colLabel(k)}<span class="sortarrow" aria-hidden="true">${on ? (s.dir === "asc" ? "↑" : "↓") : "↕"}</span></button></th>`;
+}
+
 const Toolbar = () => html`<div class="toolbar">
   <input type="search" id="q" placeholder="Filter by name, ID, node, tag" value=${state.q} onInput=${e => { state.q = e.target.value; state.page = 1; update(); }} />
   <label class="toggle chip"><input type="checkbox" id="hidestopped" checked=${state.hideStopped} onChange=${toggleSetting("hideStopped")} /> Hide stopped</label>
   <label class="toggle chip" title="Containers that weren't installed with community-scripts (no update command)"><input type="checkbox" id="hidenonscript" checked=${state.hideNonScript} onChange=${toggleSetting("hideNonScript")} /> Hide non-scripts</label>
   <${ColumnPicker} />
+  <${SortPicker} />
   <span class="spacer"></span>
   <div class="scanbar">
     <${ScanInfo} />
@@ -243,7 +311,7 @@ function Table() {
   return html`<table>
     <thead><tr>
       <th style="width:28px"><input type="checkbox" id="selall" aria-label="Select all" checked=${shown.length > 0 && shown.every(c => state.selected.has(c.vmid))} onChange=${e => selectPage(e.target.checked)} /></th>
-      ${state.columns.map(k => html`<th key=${k} class="c-${k}">${COLUMNS.find(([c]) => c === k)[1]}</th>`)}<th></th>
+      ${state.columns.map(k => html`<${SortHeader} key=${k} k=${k} />`)}<th></th>
     </tr></thead>
     <tbody id="rows">${!state.data ? null : shown.length ? shown.map(c => html`<${Row} key=${c.vmid} c=${c} />`)
       : html`<tr class="empty"><td colspan=${state.columns.length + 2} class="muted">Nothing here.</td></tr>`}</tbody>

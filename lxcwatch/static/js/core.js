@@ -32,6 +32,7 @@ export const state = {
   data: null, error: null, filter: "all", q: "", selected: new Set(), drawer: null, dialog: null,
   page: 1, pageSize: stored("pageSize", 10), hideStopped: stored("hideStopped", false), hideNonScript: stored("hideNonScript", false),
   columns: storedColumns(),
+  sort: stored("sort", null),  // {key, dir} or null for the server's order
   bulkSnapshot: false, batchStopping: false, activityFilter: "all",
 };
 
