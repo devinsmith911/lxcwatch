@@ -113,7 +113,7 @@ export async function openUpdateAll() {
   } catch (e) { alert(e.message); }
 }
 
-// ---- Settings ----
+// ---- Automatic updates (the global settings) ----
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function runSummary(run) {
@@ -123,6 +123,92 @@ function runSummary(run) {
   if (run.status === "running") return `Running now (started ${when}).`;
   const skipped = run.skipped.length + n("skipped");
   return `Last run ${when}: ${n("success")} updated${n("failed") ? `, ${n("failed")} failed` : ""}${skipped ? `, ${skipped} skipped` : ""}${run.error ? `. Error: ${run.error}` : ""}.`;
+}
+
+// Notification fields. Secrets never come back from the server: the field is
+// empty with a "saved" hint, and is only sent when you type or remove it.
+const NOTIFY_KEYS = ["ntfy_url", "ntfy_token", "pushover_token", "pushover_user", "slack_url", "webhook_url", "packages", "public_url"];
+
+function notifyPayload(cur, n) {
+  const out = {};
+  for (const k of NOTIFY_KEYS) if (!cur.locked[k] && n[k] !== undefined) out[k] = n[k];
+  return out;
+}
+
+function NotifyField({ k, label, placeholder, cur, n, setN }) {
+  const locked = cur.locked[k], secret = k in cur.secrets_set;
+  if (locked) {
+    return html`<span class="nfield"><input class="field" disabled aria-label=${label} value=${secret ? "" : cur.values[k]}
+      placeholder=${secret ? "Set" : ""} /><span class="muted small">Set by ${locked}</span></span>`;
+  }
+  const saved = secret && cur.secrets_set[k] && n[k] === undefined;
+  return html`<span class="nfield"><input class="field" type=${secret ? "password" : "url"} autocomplete="off" spellcheck="false" aria-label=${label}
+      value=${n[k] ?? ""} placeholder=${saved ? "Saved · type to replace" : placeholder} onInput=${e => setN({ ...n, [k]: e.target.value })} />
+    ${saved && html`<button type="button" class="small" title="Forget the saved ${label.toLowerCase()}" onClick=${() => setN({ ...n, [k]: "" })}>Remove</button>`}</span>`;
+}
+
+function NotifyTest({ cur, n }) {
+  const [res, setRes] = useState(null);
+  const run = async () => {
+    setRes("sending");
+    try { setRes((await post("/api/notify/test", { notify: notifyPayload(cur, n) })).results); }
+    catch (e) { setRes(e.message); }
+  };
+  return html`<div class="ntest">
+    <button type="button" id="notifytest" disabled=${res === "sending"} onClick=${run}>${res === "sending" ? "Sending…" : "Send a test"}</button>
+    ${Array.isArray(res) ? res.map(r => html`<span key=${r.channel} class="badge ${r.ok ? "ok" : "bad"}" title=${r.error || undefined}>${r.ok ? "✓" : "✗"} ${r.channel}${r.error ? `: ${r.error}` : ""}</span>`)
+      : res && res !== "sending" && html`<span class="err small">${res}</span>`}
+  </div>`;
+}
+
+function Notifications({ cur }) {
+  // Plain values start filled in; secrets start untouched (undefined).
+  const [n, setN] = useState(Object.fromEntries(NOTIFY_KEYS.filter(k => !(k in cur.secrets_set)).map(k => [k, cur.values[k]])));
+  const [err, setErr] = useState("");
+  const nf = (k, label, placeholder) => html`<${NotifyField} k=${k} label=${label} placeholder=${placeholder} cur=${cur} n=${n} setN=${setN} />`;
+  const save = async close => {
+    try {
+      await api("/api/notify", { method: "PUT", body: JSON.stringify({ notify: notifyPayload(cur, n) }) });
+      close(true);
+    } catch (e) { setErr(e.message); }
+  };
+  return html`<${Modal} id="notifydlg" onOk=${save}>
+    <h3 style="margin-top:0">Notifications</h3>
+    <p class="muted small">New app updates, package updates and new lxcwatch versions are sent once each to every channel you set up, along with the results of automatic updates.</p>
+    <div class="setgrid" id="notifygrid">
+      <span>ntfy</span>
+      <span class="stack">${nf("ntfy_url", "Topic URL", "https://ntfy.sh/your-topic")}${nf("ntfy_token", "Access token", "Access token (optional)")}</span>
+      <span>Pushover</span>
+      <span class="stack">${nf("pushover_token", "Application token", "Application token")}${nf("pushover_user", "User key", "User key")}</span>
+      <span>Slack</span>
+      <span class="stack">${nf("slack_url", "Webhook URL", "https://hooks.slack.com/services/…")}
+        <span class="muted small">An incoming webhook: in your Slack app, turn on <b>Incoming Webhooks</b> and add one for a channel.</span></span>
+      <span>Webhook</span>
+      <span class="stack">${nf("webhook_url", "Webhook URL", "https://…")}
+        <span class="muted small">Gets a JSON POST: <code>{title, message, items, url}</code></span></span>
+      <label for="notifypkgs">Packages</label>
+      <span class="stack">${cur.locked.packages
+        ? html`<span class="nfield"><input class="field" disabled value=${cur.values.packages} /><span class="muted small">Set by ${cur.locked.packages}</span></span>`
+        : html`<select id="notifypkgs" onChange=${e => setN({ ...n, packages: e.target.value })}>${[["security", "Security updates only"], ["all", "All package updates"], ["none", "Don't notify about packages"]]
+          .map(([v, label]) => html`<option key=${v} value=${v} selected=${n.packages === v}>${label}</option>`)}</select>`}
+        <span class="muted small">App updates are always included.</span></span>
+      <span>Link</span>
+      <span class="stack">${nf("public_url", "lxcwatch address", "https://lxcwatch.example.com")}
+        <span class="muted small">lxcwatch's address, so notifications can link back here.</span></span>
+    </div>
+    <${NotifyTest} cur=${cur} n=${n} />
+    <p class="err small" id="notifyerr">${err}</p>
+    <div class="actions" style=${END}>
+      <button value="ok" class="primary">Save</button>
+      <button value="cancel" formnovalidate>Cancel</button>
+    </div>
+  <//>`;
+}
+
+export async function openNotifications() {
+  document.querySelector("#menu").open = false;
+  try { await openDialog("notifications", { cur: await api("/api/notify") }); }
+  catch (e) { alert(e.message); }
 }
 
 function Settings({ current }) {
@@ -140,10 +226,9 @@ function Settings({ current }) {
     } catch (e) { setErr(e.message); }
   };
   return html`<${Modal} id="setdlg" onOk=${save}>
-    <h3 style="margin-top:0">Settings</h3>
-    <h4>Automatic updates</h4>
+    <h3 style="margin-top:0">Automatic updates</h3>
     <p><label class="check"><input type="checkbox" id="setauto" checked=${f.enabled} onChange=${set("enabled", "checked")} /> Install updates automatically in a maintenance window</label></p>
-    <p class="muted small" style="margin-top:-4px">Only containers you opt in are updated. Choose what each one gets in its Details, or select several in the table and use <b>Automatic updates…</b></p>
+    <p class="muted small" style="margin-top:-4px">Only containers you opt in are updated. Choose what each one gets in its Details, or select several in the table and use <b>Automatic updates</b> in the bar that appears.</p>
     <div class="setgrid">
       <label for="setstart">Window</label>
       <span><input type="time" id="setstart" class="field short" required value=${f.start} onInput=${set("start")} /> to <input type="time" id="setend" class="field short" required value=${f.end} onInput=${set("end")} />
@@ -182,7 +267,7 @@ function AutoBulk({ count, cs }) {
     <h3 style="margin-top:0" id="autotitle">Automatic updates for ${plural(count, "container")}</h3>
     <div class="autopick" id="autopick">${AUTO_POLICIES.map(([k, , long, desc]) => html`<label key=${k}><input type="radio" name="autopol" value=${k} checked=${policy === k} onChange=${() => setPolicy(k)} /><b>${long}</b><span class="muted small">${desc}</span></label>`)}</div>
     <p><label class="check"><input type="checkbox" id="autorb" checked=${rollback} onChange=${e => setRollback(e.target.checked)} /> Roll back to the snapshot if an update fails</label></p>
-    <p class="muted small" id="autonote">${auto?.enabled ? `Runs in the maintenance window; the next one starts ${auto.next_at ? fmtWhen(auto.next_at) : "soon"}.` : "Automatic updates are turned off in Settings. This only sets what each container would get."}</p>
+    <p class="muted small" id="autonote">${auto?.enabled ? `Runs in the maintenance window; the next one starts ${auto.next_at ? fmtWhen(auto.next_at) : "soon"}.` : "Automatic updates are turned off (Automatic updates in the menu). This only sets what each container would get."}</p>
     <div class="actions" style=${END}>
       <button value="ok" class="primary">Apply</button>
       <button value="cancel">Cancel</button>
@@ -273,7 +358,7 @@ export async function openReleaseUpgrade(c) {
   } catch (e) { alert(e.message); }
 }
 
-const DIALOGS = { confirm: Confirm, all: UpdateAll, settings: Settings, auto: AutoBulk, snapshot: Snapshot, release: ReleaseUpgrade };
+const DIALOGS = { confirm: Confirm, all: UpdateAll, settings: Settings, notifications: Notifications, auto: AutoBulk, snapshot: Snapshot, release: ReleaseUpgrade };
 
 export function Dialogs() {
   const d = state.dialog;

@@ -1,5 +1,5 @@
 // The main view: stat boxes, toolbar, batch progress, the container table and paging.
-import { AUTO_NAME, Ext, KIND_LABEL, STEP_BADGE, ago, api, html, isUnknown, notScript, post, problem, retired, rowState, state, store, until, update, useLayoutEffect, useRef } from "./core.js";
+import { AUTO_NAME, AUTO_POLICIES, COLUMNS, DEFAULT_COLUMNS, Ext, KIND_LABEL, STEP_BADGE, ago, api, duration, html, isUnknown, notScript, post, problem, retired, rowState, state, store, until, update, useLayoutEffect, useRef } from "./core.js";
 import { attempt, openDetails, openDialog, openJob, refresh, setAutoPolicy, startUpdate } from "./actions.js";
 import { openUpdateAll } from "./dialogs.js";
 
@@ -81,15 +81,37 @@ function toggleSetting(key) {
   return e => { state[key] = e.target.checked; store(key, state[key]); state.page = 1; update(); };
 }
 
+function setColumns(keys) {
+  state.columns = COLUMNS.map(([k]) => k).filter(k => keys.includes(k));
+  store("columns", state.columns);
+  update();
+}
+
+// Which table columns to show, remembered in this browser.
+function ColumnPicker() {
+  const on = state.columns;
+  const custom = on.join() !== DEFAULT_COLUMNS.join();
+  return html`<details class="colpick" id="columns">
+    <summary class="toggle chip${custom ? " custom" : ""}" title="Choose which columns to show">Columns</summary>
+    <div class="pop">
+      ${COLUMNS.map(([k, label]) => html`<label key=${k} class="check"><input type="checkbox" checked=${on.includes(k)}
+        onChange=${e => setColumns(e.target.checked ? [...on, k] : on.filter(x => x !== k))} /> ${label}</label>`)}
+      <hr />
+      <button disabled=${!custom} onClick=${() => setColumns(DEFAULT_COLUMNS)}>Reset to default</button>
+    </div>
+  </details>`;
+}
+
 const Toolbar = () => html`<div class="toolbar">
   <input type="search" id="q" placeholder="Filter by name, ID, node, tag" value=${state.q} onInput=${e => { state.q = e.target.value; state.page = 1; update(); }} />
   <label class="toggle chip"><input type="checkbox" id="hidestopped" checked=${state.hideStopped} onChange=${toggleSetting("hideStopped")} /> Hide stopped</label>
   <label class="toggle chip" title="Containers that weren't installed with community-scripts (no update command)"><input type="checkbox" id="hidenonscript" checked=${state.hideNonScript} onChange=${toggleSetting("hideNonScript")} /> Hide non-scripts</label>
+  <${ColumnPicker} />
   <span class="spacer"></span>
   <div class="scanbar">
     <${ScanInfo} />
     <button id="scanbtn" disabled=${!!state.data?.scan.running} onClick=${scanNow}>Scan now</button>
-    <button id="updateall" class="primary" onClick=${openUpdateAll}>Update all…</button>
+    <button id="updateall" class="primary" onClick=${openUpdateAll}>Update all</button>
   </div>
 </div>`;
 
@@ -166,12 +188,30 @@ function PackagesCell({ c }) {
   return html`<span class="badge warn">${c.pkg_count} pending</span>${c.pkg_security > 0 && html` <span class="badge bad">${c.pkg_security} security</span>`}${extras}`;
 }
 
-function AutoBadge({ c }) {
+const AUTO_SHORT = Object.fromEntries(AUTO_POLICIES.map(([k, short]) => [k, short]));
+
+function AutoCell({ c }) {
   if (!c.auto || c.auto.policy === "off") return null;
-  if (c.auto.paused) return html` <span class="badge warn" title="Automatic updates paused: ${c.auto.paused_reason || ""}">auto paused</span>`;
+  // No column headings on mobile, so say what the badge is about there.
+  const what = html`<span class="only-mobile">auto${" "}</span>`;
+  if (c.auto.paused) return html`<span class="badge warn" title="Automatic updates paused: ${c.auto.paused_reason || ""}">${what}paused</span>`;
   const on = state.data.auto?.enabled;
-  return html` <span class="badge${on ? "" : " muted"}" title="Automatic updates: ${AUTO_NAME[c.auto.policy]}${on ? "" : " (turned off in Settings)"}">auto</span>`;
+  return html`<span class="badge${on ? "" : " muted"}" title="Automatic updates: ${AUTO_NAME[c.auto.policy]}${on ? "" : " (turned off under Automatic updates in the menu)"}">${what}${AUTO_SHORT[c.auto.policy]}</span>`;
 }
+
+// The optional cells, by column key. Empty ones collapse on mobile.
+const CELLS = {
+  container: (c, rs) => html`<td class="c-container"><div class="name"><span class="dot" title=${rs}></span>${c.vmid} · ${c.name}${c.status !== "running" && html` <span class="badge">${c.status}</span>`}</div>
+    ${c.os && html`<div class="small muted ctinfo">${c.os}</div>`}
+    ${c.error && html`<div class="err small">${c.error}</div>`}</td>`,
+  node: c => html`<td class="c-node"><span class="badge node">${c.node}</span></td>`,
+  tags: c => html`<td class="c-tags">${c.tags.length > 0 && html`<div class="tags">${c.tags.map(t => html`<span class="badge" key=${t}>${t}</span>`)}</div>`}</td>`,
+  app: c => html`<td class="c-app" data-label="App:"><${AppCell} c=${c} />${c.upstream_errors.length > 0 && html`<div class="err small">${c.upstream_errors.join("; ")}</div>`}</td>`,
+  packages: c => html`<td class="c-packages" data-label="OS:"><${PackagesCell} c=${c} /></td>`,
+  auto: c => html`<td class="c-auto"><${AutoCell} c=${c} /></td>`,
+  uptime: c => html`<td class="c-uptime small muted" title=${c.started_at ? "Running since " + new Date(c.started_at * 1000).toLocaleString() : undefined}>${c.status === "running" && c.started_at ? html`<span class="only-mobile">${"up\u00a0"}</span>${duration(Date.now() / 1000 - c.started_at)}` : html`<span class="dash">—</span>`}</td>`,
+  scanned: c => html`<td class="c-scanned small muted">${c.scanning ? "scanning…" : ago(c.scanned_at)}</td>`,
+};
 
 function toggleSelected(id, on) {
   on ? state.selected.add(id) : state.selected.delete(id);
@@ -183,15 +223,9 @@ function Row({ c }) {
   // Update buttons only appear when there's something to update; Details always
   // has them for a manual run.
   return html`<tr class="r-${rs}${picked ? " selected" : ""}">
-    <td><input type="checkbox" checked=${picked} aria-label="Select ${c.vmid}" onChange=${e => toggleSelected(c.vmid, e.target.checked)} /></td>
-    <td><div class="name"><span class="dot" title=${rs}></span>${c.vmid} · ${c.name}${!running && html` <span class="badge">${c.status}</span>`}<${AutoBadge} c=${c} /> <span class="badge node only-mobile">${c.node}</span></div>
-      <div class="small ctinfo"><span class="badge node">${c.node}</span> <span class="muted">${c.os || ""}</span></div>
-      ${c.tags.length > 0 && html`<div class="tags">${c.tags.map(t => html`<span class="badge" key=${t}>${t}</span>`)}</div>`}
-      ${c.error && html`<div class="err small">${c.error}</div>`}</td>
-    <td data-label="App:"><${AppCell} c=${c} />${c.upstream_errors.length > 0 && html`<div class="err small">${c.upstream_errors.join("; ")}</div>`}</td>
-    <td data-label="OS:"><${PackagesCell} c=${c} /></td>
-    <td data-label="Scanned:" class="small muted">${c.scanning ? "scanning…" : ago(c.scanned_at)}</td>
-    <td><div class="actions">
+    <td class="c-select"><input type="checkbox" checked=${picked} aria-label="Select ${c.vmid}" onChange=${e => toggleSelected(c.vmid, e.target.checked)} /></td>
+    ${state.columns.map(k => CELLS[k](c, rs))}
+    <td class="c-actions"><div class="actions">
       ${busy ? html`<span class="badge warn">updating…</span>` : c.last_job?.status === "failed" && html`<span class="badge bad">last ${KIND_LABEL[c.last_job.kind] || c.last_job.kind} failed</span>`}
       ${running && !busy && c.script && (c.outdated || c.components.some(x => x.missing_version)) ? html`<button class="primary" onClick=${() => startUpdate("app", [c.vmid])}>Update app</button>` : null}
       ${running && !busy && c.pkgmgr && c.pkg_count ? html`<button onClick=${() => startUpdate("os", [c.vmid])}>Update packages</button>` : null}
@@ -209,10 +243,10 @@ function Table() {
   return html`<table>
     <thead><tr>
       <th style="width:28px"><input type="checkbox" id="selall" aria-label="Select all" checked=${shown.length > 0 && shown.every(c => state.selected.has(c.vmid))} onChange=${e => selectPage(e.target.checked)} /></th>
-      <th>Container</th><th>App</th><th>Packages</th><th>Scanned</th><th></th>
+      ${state.columns.map(k => html`<th key=${k} class="c-${k}">${COLUMNS.find(([c]) => c === k)[1]}</th>`)}<th></th>
     </tr></thead>
     <tbody id="rows">${!state.data ? null : shown.length ? shown.map(c => html`<${Row} key=${c.vmid} c=${c} />`)
-      : html`<tr class="empty"><td colspan="6" class="muted">Nothing here.</td></tr>`}</tbody>
+      : html`<tr class="empty"><td colspan=${state.columns.length + 2} class="muted">Nothing here.</td></tr>`}</tbody>
   </table>`;
 }
 
@@ -260,7 +294,7 @@ function Bulk() {
     <label class="check"><input type="checkbox" id="bulksnap" checked=${state.bulkSnapshot} onChange=${e => { state.bulkSnapshot = e.target.checked; update(); }} /> Snapshot first</label>
     <button id="bulkapp" class="primary" onClick=${() => bulkUpdate("app")}>Update apps</button>
     <button id="bulkos" onClick=${() => bulkUpdate("os")}>Update packages</button>
-    <button id="bulkauto" onClick=${bulkAuto}>Automatic updates…</button>
+    <button id="bulkauto" onClick=${bulkAuto}>Automatic updates</button>
     <button id="bulkclear" onClick=${() => { state.selected.clear(); update(); }}>Clear</button>
   </div>`;
 }

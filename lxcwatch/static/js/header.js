@@ -1,7 +1,7 @@
 // The top bar: update badge, connection status and the settings menu.
 import { Icon, ago, api, html, state, store, stored, update } from "./core.js";
 import { openActivity } from "./actions.js";
-import { openSettings } from "./dialogs.js";
+import { openNotifications, openSettings } from "./dialogs.js";
 
 const THEMES = ["system", "light", "dark"];
 let theme = stored("theme", "system");
@@ -75,7 +75,8 @@ function Menu() {
       <div class="menurow"><span class="muted">Version <span id="version">${!state.data ? "—" : v && v !== "dev" ? v : "development build"}</span></span>${" "}
         <a href="https://github.com/devinsmith911/lxcwatch/releases" target="_blank" rel="noopener" class="ext">Release notes</a></div>
       <hr />
-      <button id="settingsbtn" class="menuitem" onClick=${openSettings}><${Icon}><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/><//>Settings…</button>
+      <button id="settingsbtn" class="menuitem" onClick=${openSettings}><${Icon}><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/><//>Automatic updates</button>
+      <button id="notifybtn" class="menuitem" onClick=${openNotifications}><${Icon}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><//>Notifications</button>
       ${!email && html`<button id="logoutbtn" class="menuitem" onClick=${signOut}><${Icon}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/><//>Sign out</button>`}
     </div>
   </details>`;

@@ -187,14 +187,14 @@ export function Details({ dr }) {
     ${c.restart_needed && html`<p class="whatsnew small"><b>Restart needed.</b> ${c.stale_procs.length ? html`These are still running code that an update replaced: <code>${c.stale_procs.join(", ")}</code>` : "The container reports that it needs a reboot."}</p>`}
     ${c.release && html`<h3>Release upgrade</h3><div class="whatsnew small"><div class="head">
       <span><b>Debian ${c.release.current} (${c.release.from}) → ${c.release.target} (${c.release.to})</b> is available${c.release.target < c.release.stable ? `, one step towards Debian ${c.release.stable}` : ""}.</span>${" "}
-      <button class="primary" disabled=${!running || busy} onClick=${() => openReleaseUpgrade(c)}>Upgrade to Debian ${c.release.target}…</button></div>
+      <button class="primary" disabled=${!running || busy} onClick=${() => openReleaseUpgrade(c)}>Upgrade to Debian ${c.release.target}</button></div>
       <div class="muted" style="margin-top:4px">Runs pre-checks first. Switches the official Debian sources, upgrades every package and restarts the container.</div></div>`}
     <h3>Pending packages (${c.pkg_count})</h3>
     ${c.pkg_stale && html`<${Stale} c=${c} />`}
     ${c.packages.length ? html`<div class="pkgs">${c.packages.map(p => html`<div key=${p.name}>${p.security ? "⚠ " : ""}${p.name} ${p.from || ""} → ${p.to}</div>`)}</div>` : html`<p class="muted">No pending packages.</p>`}
     <h3>Automatic updates</h3>
     <${AutoPanel} c=${c} />
-    <div class="sectionhead"><h3>Snapshots</h3><button disabled=${busy} onClick=${() => openSnapshot(c)}>Take snapshot…</button></div>
+    <div class="sectionhead"><h3>Snapshots</h3><button disabled=${busy} onClick=${() => openSnapshot(c)}>Take snapshot</button></div>
     <${Snapshots} dr=${dr} c=${c} />
     <h3>Job history</h3>
     <${Jobs} dr=${dr} c=${c} />`;

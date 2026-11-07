@@ -1,7 +1,7 @@
 """Automatic updates: install opted-in containers' updates in a maintenance window.
 
 Settings (the window, days, minimum release age) live in the kv table and
-are edited on the Settings screen; each container's policy lives in
+are edited in the Automatic updates dialog; each container's policy lives in
 auto_policy. When a window opens, lxcwatch scans fresh, plans the work and
 runs it through the Update all runner, one step at a time. A failed step
 pauses automatic updates for that container until a manual update succeeds
@@ -272,6 +272,6 @@ class AutoUpdater:
             lines.insert(0, {"text": f"The run stopped: {run['error']}", "url": None, "vmid": None})
         title = f"Automatic updates: {len(done)} updated" + (f", {len(failed)} failed" if failed else "")
         try:
-            await notify.deliver(self.cfg, self.http, title, lines, tags="arrows_counterclockwise")
+            await notify.deliver(self.cfg, self.db, self.http, title, lines, tags="arrows_counterclockwise")
         except Exception:
             log.exception("automatic update notification failed")

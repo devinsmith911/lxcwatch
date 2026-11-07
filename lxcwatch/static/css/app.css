@@ -112,6 +112,16 @@ input[type=search] { font: inherit; padding: 5px 10px; border: 1px solid var(--b
 .scanbar { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
 .toggle:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
 .toggle input { accent-color: var(--accent); margin: 0; }
+/* Column picker: a chip in the toolbar with a small popover. */
+.colpick { position: relative; }
+.colpick summary { list-style: none; }
+.colpick summary::-webkit-details-marker { display: none; }
+.colpick summary::after { content: "▾"; font-size: 10px; color: var(--muted); }
+.colpick[open] summary, .colpick summary.custom { background: var(--accent-soft); border-color: var(--accent); }
+.colpick .pop { position: absolute; left: 0; top: calc(100% + 6px); display: flex; flex-direction: column; gap: 7px; min-width: 180px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.2); z-index: 20; font-size: 13px; }
+.colpick .pop input { accent-color: var(--accent); margin: 0; }
+.colpick .pop hr { border: 0; border-top: 1px solid var(--border); margin: 1px 0; }
+.colpick .pop button { font-size: 12px; }
 .spacer { flex: 1; }
 input.field { font: inherit; width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); margin-top: 4px; }
 .sectionhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 18px 0 8px; }
@@ -143,6 +153,7 @@ table { width: 100%; border-collapse: collapse; background: var(--panel); border
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
 tr:last-child td { border-bottom: 0; }
+td.c-node, td.c-auto, td.c-uptime, td.c-scanned { white-space: nowrap; }
 tr.selected td { background: var(--accent-soft); }
 .name .dot { margin-right: 6px; vertical-align: 1px; background: var(--row, var(--idle)); }
 tr.r-security { --row: var(--bad); }
@@ -196,6 +207,12 @@ dialog h4 { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; lett
 .field.short { width: 7.5em; }
 .field.tiny { width: 4.5em; }
 .days { display: flex; flex-wrap: wrap; gap: 4px; }
+.stack { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.nfield { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.nfield input.field { flex: 1 1 200px; margin-top: 0; }
+.nfield button { padding: 4px 9px; }
+.ntest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.ntest .badge { white-space: normal; text-align: left; }
 .days label { padding: 3px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; user-select: none; }
 .days input { position: absolute; opacity: 0; pointer-events: none; }
 .days label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
@@ -270,16 +287,23 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   /* Rows as compact cards: name + time, app, packages, actions. */
   thead { display: none; }
   table, tbody { display: block; width: 100%; }
-  tbody tr { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 3px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-  tbody tr.empty { display: block; }
+  /* Each card: name and scan time, then a line of node, auto, uptime and tags,
+     then app, packages and actions. Whichever columns are hidden just drop out. */
+  tbody tr { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 3px; padding: 8px 10px 8px 38px; border-bottom: 1px solid var(--border); }
+  tbody tr::after { content: ""; order: 3; flex-basis: 100%; height: 0; margin-top: -3px; }
+  tbody tr.empty { display: block; padding: 8px 10px; }
+  tbody tr.empty::after { content: none; }
   td { display: block; border: 0; padding: 0; min-width: 0; }
-  tbody tr td:nth-child(1) { grid-column: 1; grid-row: 1; }
-  tbody tr td:nth-child(2) { grid-column: 2; grid-row: 1; }
-  tbody tr td:nth-child(5) { grid-column: 3; grid-row: 1; font-size: 11px; white-space: nowrap; }
-  tbody tr td:nth-child(3) { grid-column: 2 / 4; grid-row: 2; font-size: 13px; }
-  tbody tr td:nth-child(4) { grid-column: 2 / 4; grid-row: 3; }
-  tbody tr td:nth-child(6) { grid-column: 2 / 4; grid-row: 4; padding-top: 3px; }
-  .ctinfo, .tags { display: none; }
+  td.c-select { position: absolute; left: 10px; top: 8px; }
+  td.c-container { order: 1; flex: 1 1 0; }
+  td.c-scanned { order: 2; margin-left: auto; font-size: 11px; }
+  td.c-node, td.c-auto, td.c-uptime, td.c-tags { order: 4; font-size: 11px; }
+  td.c-app { order: 5; flex-basis: 100%; font-size: 13px; }
+  td.c-packages { order: 6; flex-basis: 100%; }
+  td.c-actions { order: 7; flex-basis: 100%; padding-top: 3px; }
+  tbody td:empty { display: none; }
+  .ctinfo { display: none; }
+  .colpick .pop { left: auto; right: 0; }
   .only-mobile { display: inline-flex !important; }
   td:has(> .dash:only-child) { display: none; }
   .comp { white-space: normal; }

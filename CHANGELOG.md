@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Columns** in the toolbar chooses which columns the container table shows: Container, Node, Tags, App, Packages, Auto updates, Uptime and Scanned. Your choice is remembered in this browser, and **Reset to default** brings back the usual set.
+- A new **Uptime** column shows how long each running container has been up. It's off by default.
+- Notifications can be set up from the dashboard, under **Notifications** in the menu, instead of with environment variables: ntfy, Pushover, Slack and webhook addresses, which package updates to report, and lxcwatch's own address for links. **Send a test** checks each channel and shows what went wrong. Tokens you save aren't shown again. Anything set with an environment variable still works and appears read-only.
+- Slack notifications, through an incoming webhook. Set it under **Notifications** or with `LXCWATCH_SLACK_WEBHOOK_URL`.
+
+### Fixed
+- A notification address that redirects (for example `http://` to `https://`) is now reported as failing. lxcwatch used to follow the redirect, which turned the message into an empty GET request and counted it as sent.
+
+### Changed
+- The menu's **Settings** is now **Automatic updates**, since that's all it holds now that notifications have their own dialog. Buttons that open a dialog no longer end in "…".
+- Node, tags and automatic updates now have their own columns instead of sitting under the container name. The Auto updates column names the policy (Security, Packages or App + packages) rather than just saying "auto".
+
 ## 2.3.3 (2026-11-04)
 
 ### Added

@@ -33,8 +33,8 @@ It's built for containers created with the [Proxmox VE community-scripts](https:
 - **Updates from the browser.** It runs the community-script `update`, upgrades packages, does Debian release upgrades (e.g. 12 → 13) or restarts the container, and streams the log live.
 - **Update all.** It updates apps, packages or both across every container that needs it, one container at a time.
 - **Snapshots and rollback.** It can take a snapshot before any update, or whenever you like, and roll back with one click.
-- **Notifications.** New updates can go to ntfy, Pushover or a webhook. lxcwatch also tells you when there's a new version of itself.
-- **Automatic updates, if you want them.** Off by default. Turn them on in **Settings**, pick the days and maintenance window, and choose per container what gets installed: security packages, all packages, or the app and packages.
+- **Notifications.** New updates can go to ntfy, Pushover, Slack or a webhook, set up under **Notifications** in the menu. lxcwatch also tells you when there's a new version of itself.
+- **Automatic updates, if you want them.** Off by default. Turn them on under **Automatic updates** in the menu, pick the days and maintenance window, and choose per container what gets installed: security packages, all packages, or the app and packages.
 - **Activity history.** See recent jobs across all containers, with their results and logs.
 
 ## Screenshots
@@ -137,12 +137,15 @@ lxcwatch reads its settings from environment variables, which the package keeps 
 | `LXCWATCH_KEEP_SNAPSHOTS` | `3` | `lxcwatch-*` snapshots kept per container (`0` = keep all) |
 | `LXCWATCH_JOB_CONCURRENCY` | `2` | How many jobs can run at the same time |
 | `LXCWATCH_GITHUB_TOKEN` | — | Recommended once you have more than about 15 apps: GitHub allows 60 requests/hour without a token. It's also passed to `update` inside the containers, so app updates don't hit the limit either |
-| `LXCWATCH_NTFY_URL` / `_TOKEN` | — | ntfy topic URL |
+| `LXCWATCH_NTFY_URL` / `_TOKEN` | — | ntfy topic URL and optional access token |
 | `LXCWATCH_PUSHOVER_TOKEN` / `_USER` | — | Pushover application token and user key. Long messages are cut to Pushover's 1024-character limit |
+| `LXCWATCH_SLACK_WEBHOOK_URL` | — | A Slack incoming webhook URL (`https://hooks.slack.com/services/…`) |
 | `LXCWATCH_WEBHOOK_URL` | — | Receives a JSON POST: `{title, message, items: [{text, url, vmid}], url}` |
 | `LXCWATCH_NOTIFY_PACKAGES` | `security` | `none`, `security` or `all` |
-| `LXCWATCH_PUBLIC_URL` | — | lxcwatch's address, linked from ntfy and Pushover notifications |
+| `LXCWATCH_PUBLIC_URL` | — | lxcwatch's address, linked from notifications |
 | `LXCWATCH_UPDATE_CHECK` | `true` | Check for new lxcwatch releases: shows a badge in the header and sends one notification per new version |
+
+The notification settings (ntfy through `LXCWATCH_PUBLIC_URL` above) can also be set in the dashboard under **Notifications** in the menu, which is usually easier. A setting given in the environment takes precedence and shows as read-only there.
 
 A GitHub token only needs public read access: a fine-grained token with no extra permissions works.
 

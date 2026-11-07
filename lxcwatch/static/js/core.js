@@ -10,9 +10,28 @@ export function store(key, value) {
   try { localStorage.setItem(`lxcwatch.${key}`, JSON.stringify(value)); } catch {}
 }
 
+// Table columns, in display order: [key, label, shown by default]. The select
+// box and the actions are always there.
+export const COLUMNS = [
+  ["container", "Container", true],
+  ["node", "Node", true],
+  ["tags", "Tags", true],
+  ["app", "App", true],
+  ["packages", "Packages", true],
+  ["auto", "Auto updates", true],
+  ["uptime", "Uptime", false],
+  ["scanned", "Scanned", true],
+];
+export const DEFAULT_COLUMNS = COLUMNS.filter(([, , on]) => on).map(([k]) => k);
+function storedColumns() {
+  const v = stored("columns", null);
+  return Array.isArray(v) ? v.filter(k => COLUMNS.some(([c]) => c === k)) : DEFAULT_COLUMNS;
+}
+
 export const state = {
   data: null, error: null, filter: "all", q: "", selected: new Set(), drawer: null, dialog: null,
   page: 1, pageSize: stored("pageSize", 10), hideStopped: stored("hideStopped", false), hideNonScript: stored("hideNonScript", false),
+  columns: storedColumns(),
   bulkSnapshot: false, batchStopping: false, activityFilter: "all",
 };
 

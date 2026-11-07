@@ -60,7 +60,10 @@ class Config:
     releases_url: str | None  # lxcwatch's own latest release; None disables the check
     pushover_user: str | None
     webhook_url: str | None
-    notify_packages: str  # none | security | all
+    slack_webhook_url: str | None
+    # Notification settings left as None aren't set in the environment; they can
+    # be set in the UI instead (see notify.load_settings).
+    notify_packages: str | None  # none | security | all
     public_url: str | None
     cf_access_team: str | None  # team name, as in <team>.cloudflareaccess.com; None when Access is off
     cf_access_aud: str | None
@@ -83,8 +86,8 @@ def load() -> Config:
     pushover_token, pushover_user = _env("PUSHOVER_TOKEN"), _env("PUSHOVER_USER")
     if bool(pushover_token) != bool(pushover_user):
         raise SystemExit("Pushover needs both LXCWATCH_PUSHOVER_TOKEN and LXCWATCH_PUSHOVER_USER")
-    notify_packages = (_env("NOTIFY_PACKAGES", "security") or "security").lower()
-    if notify_packages not in ("none", "security", "all"):
+    notify_packages = (_env("NOTIFY_PACKAGES") or "").lower() or None
+    if notify_packages not in (None, "none", "security", "all"):
         raise SystemExit("LXCWATCH_NOTIFY_PACKAGES must be none, security or all")
     cf_access_team, cf_access_aud, cf_access_emails = None, None, frozenset()
     if _bool("CF_ACCESS_ENABLED", False):
@@ -118,6 +121,7 @@ def load() -> Config:
             "RELEASES_URL", "https://api.github.com/repos/devinsmith911/lxcwatch/releases/latest"),
         pushover_user=pushover_user,
         webhook_url=_env("WEBHOOK_URL"),
+        slack_webhook_url=_env("SLACK_WEBHOOK_URL"),
         notify_packages=notify_packages,
         public_url=_env("PUBLIC_URL"),
         cf_access_team=cf_access_team,

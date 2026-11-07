@@ -1,4 +1,5 @@
 import asyncio
+import json
 import urllib.parse
 
 import httpx
@@ -118,3 +119,92 @@ def test_own_update_is_always_announced(cfg, monkeypatch):
     monkeypatch.setattr(cluster_mod, "__version__", "dev")
     asyncio.run(cl.check_self_update())
     assert db.get("self_update") == "null"  # source checkouts never nag
+
+
+def plain_cfg(tmp_path, monkeypatch):
+    for k in ("PUSHOVER_TOKEN", "PUSHOVER_USER", "PUBLIC_URL"):
+        monkeypatch.delenv(f"LXCWATCH_{k}", raising=False)
+    monkeypatch.setenv("LXCWATCH_PVE_HOST", "pve1")
+    monkeypatch.setenv("LXCWATCH_PASSWORD", "x")
+    monkeypatch.setenv("LXCWATCH_DATA_DIR", str(tmp_path))
+    return config.load()
+
+
+def test_slack_from_ui_settings(tmp_path, monkeypatch):
+    cfg = plain_cfg(tmp_path, monkeypatch)
+    db = DB(cfg.data_dir)
+    notify.save_settings(cfg, db, {"slack_url": " https://hooks.slack.com/services/T/B/secret ", "public_url": "https://lxc.example"})
+    add_ct(db, 101)
+    db.upsert_seen(102, "pve1", "a<b>&c", "running", "")
+    db.save_scan(102, {"components": [], "packages": [{"name": "x", "from": "1", "to": "2", "security": True}]}, None)
+    [req] = send(cfg, db)
+    assert str(req.url) == "https://hooks.slack.com/services/T/B/secret"
+    text = json.loads(req.content)["text"]
+    assert text.startswith("*2 LXC updates available*")
+    assert "• 101 ct101: app 1.0 → 2.0 (<https://github.com/x/app/releases/tag/v2.0-101|release notes>)" in text
+    assert "a&lt;b&gt;&amp;c: 1 security update" in text
+    assert text.endswith("<https://lxc.example|Open lxcwatch>")
+
+
+def test_slack_message_is_capped():
+    lines = [{"text": f"line {i}", "url": None} for i in range(50)]
+    text = notify.slack_payload("t", lines, None)["text"]
+    assert text.count("• ") == notify.SLACK_MAX_LINES and text.endswith("…and 10 more")
+
+
+def test_secrets_stay_server_side(tmp_path, monkeypatch):
+    cfg = plain_cfg(tmp_path, monkeypatch)
+    db = DB(cfg.data_dir)
+    notify.save_settings(cfg, db, {"ntfy_url": "https://ntfy.sh/t", "ntfy_token": "tk", "packages": "all"})
+    view = notify.public_settings(cfg, db)
+    assert view["values"]["ntfy_token"] == "" and view["secrets_set"]["ntfy_token"] is True
+    assert view["values"]["ntfy_url"] == "https://ntfy.sh/t" and view["values"]["packages"] == "all"
+    # Saving without the secret keeps it; an empty string clears it.
+    notify.save_settings(cfg, db, {"ntfy_url": "https://ntfy.sh/u", "ntfy_token": None})
+    assert notify.load_settings(cfg, db)["ntfy_token"] == "tk"
+    notify.save_settings(cfg, db, {"ntfy_token": ""})
+    assert notify.load_settings(cfg, db)["ntfy_token"] == ""
+
+
+def test_environment_wins_and_locks(cfg):
+    db = DB(cfg.data_dir)
+    notify.save_settings(cfg, db, {"pushover_token": "ui", "pushover_user": "ui", "packages": "none"})
+    s = notify.load_settings(cfg, db)
+    assert s["pushover_token"] == "apptoken" and s["packages"] == "none"
+    assert notify.public_settings(cfg, db)["locked"]["pushover_token"] == "LXCWATCH_PUSHOVER_TOKEN"
+
+
+def test_settings_are_checked(tmp_path, monkeypatch):
+    cfg = plain_cfg(tmp_path, monkeypatch)
+    db = DB(cfg.data_dir)
+    with pytest.raises(ValueError, match="Slack webhook URL"):
+        notify.save_settings(cfg, db, {"slack_url": "hooks.slack.com/x"})
+    with pytest.raises(ValueError, match="Pushover needs both"):
+        notify.save_settings(cfg, db, {"pushover_token": "t"})
+    with pytest.raises(ValueError, match="none, security or all"):
+        notify.save_settings(cfg, db, {"packages": "some"})
+
+
+def test_send_test_reports_each_channel(tmp_path, monkeypatch):
+    cfg = plain_cfg(tmp_path, monkeypatch)
+    db = DB(cfg.data_dir)
+
+    def handler(request):
+        if "slack" in str(request.url):
+            return httpx.Response(404, text="no_service")
+        if "moved" in str(request.url):
+            return httpx.Response(302, headers={"Location": "https://docs.example/"})
+        return httpx.Response(200)
+
+    async def go(data):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            return await notify.send_test(cfg, db, http, data)
+    with pytest.raises(ValueError, match="at least one channel"):
+        asyncio.run(go({}))
+    results = asyncio.run(go({"slack_url": "https://hooks.slack.com/services/x", "webhook_url": "https://hook.example/x"}))
+    assert results == [{"channel": "Slack", "ok": False, "error": "HTTP 404: no_service"},
+                       {"channel": "webhook", "ok": True, "error": None}]
+    assert notify.load_settings(cfg, db)["slack_url"] == ""  # testing doesn't save
+    # A redirect is a failure, not a GET of wherever it points.
+    [r] = asyncio.run(go({"webhook_url": "https://moved.example/x"}))
+    assert not r["ok"] and "redirected" in r["error"]

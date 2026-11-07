@@ -17,9 +17,12 @@ onUpdate(() => {
 });
 draw();
 
-// Clicking elsewhere closes the header popovers.
+// Clicking elsewhere closes the popovers.
 document.addEventListener("click", e => {
-  for (const id of ["conn", "menu"]) if (!e.target.closest(`#${id}`)) document.querySelector(`#${id}`).open = false;
+  for (const id of ["conn", "menu", "columns"]) {
+    const el = document.querySelector(`#${id}`);
+    if (el && !e.target.closest(`#${id}`)) el.open = false;
+  }
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && state.drawer && !document.querySelector("#confirm[open]")) closeDrawer();

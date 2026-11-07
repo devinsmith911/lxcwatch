@@ -405,6 +405,32 @@ async def put_settings(req: SettingsRequest):
     return await get_settings()
 
 
+class NotifyRequest(BaseModel):
+    notify: dict
+
+
+@app.get("/api/notify")
+async def get_notify():
+    return notify.public_settings(cfg, db)
+
+
+@app.put("/api/notify")
+async def put_notify(req: NotifyRequest):
+    try:
+        notify.save_settings(cfg, db, req.notify)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return notify.public_settings(cfg, db)
+
+
+@app.post("/api/notify/test")
+async def notify_test(req: NotifyRequest):
+    try:
+        return {"results": await notify.send_test(cfg, db, upstream.http, req.notify)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 class AutoPolicyRequest(BaseModel):
     vmids: list[int]
     policy: str

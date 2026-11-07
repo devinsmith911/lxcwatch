@@ -130,7 +130,7 @@ def test_run_pauses_rolls_back_and_runs_once_per_window(tmp_path, monkeypatch):
     batches = Batches(db, jobs)
     sent = []
 
-    async def deliver(cfg, http, title, lines, tags="package"):
+    async def deliver(cfg, db, http, title, lines, tags="package"):
         sent.append((title, [l["text"] for l in lines]))
         return True
     monkeypatch.setattr(auto.notify, "deliver", deliver)
