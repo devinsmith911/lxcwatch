@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.4.0 (2026-11-07)
 
 ### Added
 - **Columns** in the toolbar chooses which columns the container table shows: Container, Node, Tags, App, Packages, Auto updates, Uptime and Scanned. Your choice is remembered in this browser, and **Reset to default** brings back the usual set.
