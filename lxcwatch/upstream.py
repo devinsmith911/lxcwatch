@@ -11,7 +11,9 @@ We read those, resolve simple variable assignments for pins, and ask the
 forge for its latest release.
 """
 
+import asyncio
 import contextvars
+import logging
 import re
 import shlex
 import time
@@ -21,6 +23,8 @@ from urllib.parse import quote
 import httpx
 
 from .config import Config
+
+log = logging.getLogger(__name__)
 
 # Set while a manual scan runs: cache entries older than this count as
 # missing, so each repo/script is fetched fresh once per scan (and shared by
@@ -41,6 +45,7 @@ ASSIGN_RE = re.compile(r"""^\s*(?:export\s+|local\s+|readonly\s+)?([A-Za-z_][A-Z
 VAR_RE = re.compile(r"^\$\{?([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}?$")
 FORGES = {"gh": "github", "codeberg": "codeberg", "gl": "gitlab"}
 DEAD_BASES = ("git.community-scripts.org", "tteck/Proxmox")
+RETRY_DELAY = 2.0  # seconds before retrying a failed ct script fetch
 
 
 @dataclass
@@ -337,14 +342,30 @@ class Upstream:
 
     async def ct_script(self, base: str | None, name: str) -> str | None:
         url = f"{self.script_base(base)}/ct/{name}.sh"
-        hit, value = self._get(("script", url), 6 * 3600)
+        key = ("script", url)
+        hit, value = self._get(key, 6 * 3600)
         if hit:
             return value
-        r = await self.http.get(url)
-        if r.status_code == 404:
-            return self._put(("script", url), None)
-        r.raise_for_status()
-        return self._put(("script", url), r.text)
+        # raw.githubusercontent.com fails now and then. Without the script a
+        # container has no release checks, and its app shows as untracked until
+        # the next scan, so retry once and then fall back to the last good copy.
+        for attempt in range(2):
+            try:
+                r = await self.http.get(url)
+                if r.status_code == 404:
+                    return self._put(key, None)
+                r.raise_for_status()
+                return self._put(key, r.text)
+            except httpx.HTTPError as e:
+                if attempt == 0:
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+                stale = self._cache.get(key)
+                if stale and stale[1] is not None:
+                    log.warning("fetching %s failed (%s); using the copy from %s", url, e,
+                                time.strftime("%H:%M", time.localtime(stale[0])))
+                    return stale[1]
+                raise
 
     async def latest(self, forge: str, repo: str, tag_prefix: str | None = None) -> str | None:
         key = ("release", forge, repo, tag_prefix)

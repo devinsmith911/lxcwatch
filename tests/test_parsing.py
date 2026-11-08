@@ -1,6 +1,8 @@
+import asyncio
 import os
 import shutil
 import subprocess
+import time
 
 import pytest
 
@@ -527,3 +529,54 @@ def test_manual_scan_rechecks_lxcwatch_release_fresh(tmp_path):
     asyncio.run(c.scan_all(fresh=True))
     asyncio.run(c.scan_all())
     assert seen[0] is not None and seen[1] is None
+
+
+def _upstream_with(handler, monkeypatch):
+    import httpx
+    from lxcwatch import upstream as up
+    monkeypatch.setattr(up, "RETRY_DELAY", 0)
+    u = up.Upstream.__new__(up.Upstream)
+    u.cfg = type("C", (), {"scripts_base": "https://scripts.example"})()
+    u.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    u._cache, u.published = {}, {}
+    return u
+
+
+def test_ct_script_retries_a_failed_fetch(monkeypatch):
+    import httpx
+    calls = []
+
+    def handler(request):
+        calls.append(request.url)
+        return httpx.Response(502 if len(calls) == 1 else 200, text="APP=x")
+    u = _upstream_with(handler, monkeypatch)
+    assert asyncio.run(u.ct_script(None, "x")) == "APP=x"
+    assert len(calls) == 2
+
+
+def test_ct_script_falls_back_to_the_last_good_copy(monkeypatch):
+    import httpx
+    from lxcwatch import upstream as up
+    status = {"code": 200}
+    u = _upstream_with(lambda request: httpx.Response(status["code"], text="APP=x"), monkeypatch)
+    assert asyncio.run(u.ct_script(None, "x")) == "APP=x"
+    status["code"] = 503
+    token = up.FRESH_SINCE.set(time.time() + 1)  # a manual scan: the cached copy is too old
+    try:
+        assert asyncio.run(u.ct_script(None, "x")) == "APP=x"
+        with pytest.raises(httpx.HTTPError):
+            asyncio.run(u.ct_script(None, "other"))
+    finally:
+        up.FRESH_SINCE.reset(token)
+
+
+def test_ct_script_404_is_not_retried(monkeypatch):
+    import httpx
+    calls = []
+
+    def handler(request):
+        calls.append(request.url)
+        return httpx.Response(404)
+    u = _upstream_with(handler, monkeypatch)
+    assert asyncio.run(u.ct_script(None, "gone")) is None
+    assert len(calls) == 1
