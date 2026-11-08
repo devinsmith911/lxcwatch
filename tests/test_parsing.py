@@ -600,3 +600,15 @@ def test_upstream_errors_are_logged(tmp_path, monkeypatch, caplog):
     with caplog.at_level("WARNING", logger="lxcwatch.cluster"):
         asyncio.run(c.scan_one(101, rediscover=False))
     assert "scan of 101: fetching ct/sabnzbd.sh: 502 Bad Gateway" in caplog.text
+
+
+def test_error_text_names_errors_without_a_message():
+    import httpx
+    from lxcwatch.upstream import RateLimited, error_text
+    req = httpx.Request("GET", "https://raw.githubusercontent.com/x")
+    assert error_text(httpx.ReadTimeout("", request=req)) == "timed out (ReadTimeout)"
+    assert error_text(httpx.ConnectError("", request=req)) == "ConnectError"
+    assert error_text(httpx.ConnectError("[Errno -3] name resolution failed", request=req)) == "ConnectError: [Errno -3] name resolution failed"
+    r = httpx.Response(502, request=req)
+    assert error_text(httpx.HTTPStatusError("x", request=req, response=r)) == "HTTP 502 Bad Gateway"
+    assert error_text(RateLimited("GitHub API rate limit reached")) == "GitHub API rate limit reached"

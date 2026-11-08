@@ -13,7 +13,7 @@ from .probe import parse_probe, probe_script
 from .release import debian_stable, release_info
 from .ssh import SSH
 from . import __version__
-from .upstream import FRESH_SINCE, Upstream, build_components, package_components, parse_checks, version_tuple
+from .upstream import FRESH_SINCE, Upstream, build_components, error_text, package_components, parse_checks, version_tuple
 
 log = logging.getLogger(__name__)
 
@@ -195,13 +195,13 @@ class Cluster:
                 else:
                     checks = parse_checks(text)
             except httpx.HTTPError as e:
-                info["upstream_errors"].append(f"fetching ct/{info['script']}.sh: {e}")
+                info["upstream_errors"].append(f"fetching ct/{info['script']}.sh: {error_text(e)}")
         latest: dict[tuple[str, str], str | None] = {}
         for c in checks:
             try:
                 latest[(c.forge, c.repo)] = await self.upstream.latest(c.forge, c.repo, c.tag_prefix)
             except httpx.HTTPError as e:
-                info["upstream_errors"].append(f"{c.repo}: {e}")
+                info["upstream_errors"].append(f"{c.repo}: {error_text(e)}")
         info["components"] = build_components(checks, info["versions"], latest)
         for comp in info["components"]:
             if comp.get("target_tag") and comp.get("repo"):
@@ -221,7 +221,7 @@ class Cluster:
             try:
                 text = await self.upstream.ct_script(None, name)
             except httpx.HTTPError as e:
-                info["upstream_errors"].append(f"fetching ct/{name}.sh: {e}")
+                info["upstream_errors"].append(f"fetching ct/{name}.sh: {error_text(e)}")
                 break
             if text is not None:
                 info["script"] = info["slug"] = name

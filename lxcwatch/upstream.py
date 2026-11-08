@@ -302,6 +302,17 @@ class RateLimited(httpx.HTTPError):
     pass
 
 
+def error_text(e: httpx.HTTPError) -> str:
+    """Readable text for a failed fetch. Timeouts often carry no message at all."""
+    if isinstance(e, httpx.HTTPStatusError):
+        return f"HTTP {e.response.status_code} {e.response.reason_phrase}".rstrip()
+    if isinstance(e, RateLimited):
+        return str(e)
+    if isinstance(e, httpx.TimeoutException):
+        return f"timed out ({type(e).__name__})"
+    return f"{type(e).__name__}{f': {e}' if str(e) else ''}"
+
+
 def _check(r: httpx.Response) -> None:
     """raise_for_status, with a useful message for GitHub's rate limit."""
     if r.status_code in (403, 429) and r.headers.get("x-ratelimit-remaining") == "0":
@@ -362,7 +373,7 @@ class Upstream:
                     continue
                 stale = self._cache.get(key)
                 if stale and stale[1] is not None:
-                    log.warning("fetching %s failed (%s); using the copy from %s", url, e,
+                    log.warning("fetching %s failed (%s); using the copy from %s", url, error_text(e),
                                 time.strftime("%H:%M", time.localtime(stale[0])))
                     return stale[1]
                 raise
