@@ -580,3 +580,23 @@ def test_ct_script_404_is_not_retried(monkeypatch):
     u = _upstream_with(handler, monkeypatch)
     assert asyncio.run(u.ct_script(None, "gone")) is None
     assert len(calls) == 1
+
+
+def test_upstream_errors_are_logged(tmp_path, monkeypatch, caplog):
+    from lxcwatch import cluster as cl
+    from lxcwatch.db import DB
+    db = DB(str(tmp_path))
+    db.upsert_seen(101, "pve1", "sab", "running", "", None)
+    c = cl.Cluster.__new__(cl.Cluster)
+    c.db, c.scanning, c.is_busy = db, set(), lambda vmid: False
+    c.cfg = type("C", (), {"refresh_packages": False})()
+
+    async def resolve(node): return "10.0.0.1"
+    async def run(host, cmd, timeout=None): return type("R", (), {"out": "", "err": "", "rc": 0})()
+    async def fake_resolve(info): info["upstream_errors"].append("fetching ct/sabnzbd.sh: 502 Bad Gateway")
+    c.resolve, c.ssh = resolve, type("S", (), {"run": staticmethod(run)})()
+    monkeypatch.setattr(cl, "parse_probe", lambda out: {"probe_ok": True, "components": [], "upstream_errors": []})
+    c._resolve = fake_resolve
+    with caplog.at_level("WARNING", logger="lxcwatch.cluster"):
+        asyncio.run(c.scan_one(101, rediscover=False))
+    assert "scan of 101: fetching ct/sabnzbd.sh: 502 Bad Gateway" in caplog.text

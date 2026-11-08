@@ -168,6 +168,9 @@ class Cluster:
             if not info["probe_ok"]:
                 raise RuntimeError(r.err.strip() or f"probe exited with {r.rc}")
             await self._resolve(info)
+            # These only reach the dashboard otherwise; the scan itself succeeded.
+            for err in info["upstream_errors"]:
+                log.warning("scan of %s: %s", vmid, err)
             # Start the clock for automatic updates' minimum release age.
             for comp in info["components"]:
                 if comp["state"] == "outdated":
