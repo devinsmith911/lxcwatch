@@ -1,6 +1,6 @@
 [project]
 name = "lxcwatch"
-version = "2.4.3"
+version = "2.4.4"
 description = "Track and update community-scripts LXCs across a Proxmox cluster"
 requires-python = ">=3.11"
 license = {text = "MIT"}

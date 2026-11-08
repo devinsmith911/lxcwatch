@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.4.4 (2026-11-08)
 
 ### Fixed
 - Errors under an app name and in the log now always say what went wrong, such as `timed out (ReadTimeout)` or `HTTP 502 Bad Gateway`. Timeouts used to leave the message blank, as in `fetching ct/sabnzbd.sh:`.
