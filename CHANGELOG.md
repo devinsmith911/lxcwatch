@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.3 (2026-11-08)
+
+### Changed
+- Errors looking up an app's script or latest release are now written to lxcwatch's log (`journalctl -u lxcwatch`) as well as shown under the app name, one line per container, for example `scan of 105: fetching ct/sabnzbd.sh: …`. They used to only appear on the dashboard.
+
 ## 2.4.2 (2026-11-08)
 
 ### Fixed
