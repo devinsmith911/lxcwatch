@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 2.4.2 (2026-11-08)
 
 ### Fixed
-- Apps could show as **untracked** after a scan, for example `sabnzbd-org untracked`, with their update status missing until the next scan. This happened when downloading the app's community-scripts script failed, which GitHub does now and then. lxcwatch now retries once and otherwise uses the copy it fetched last time.
+- Apps could show as **untracked** after a scan, for example `sabnzbd-org untracked`, with a red `fetching ct/….sh` error under the app name and no update status until the next scan. This happened when downloading the app's community-scripts script failed, which GitHub does now and then. lxcwatch now retries once and otherwise uses the copy it fetched last time.
 
 ## 2.4.1 (2026-11-07)
 
