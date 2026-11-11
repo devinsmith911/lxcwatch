@@ -108,8 +108,6 @@ input[type=search] { font: inherit; padding: 5px 10px; border: 1px solid var(--b
 .activity .what a { color: var(--text); font-weight: 600; cursor: pointer; }
 .activity .meta { color: var(--muted); font-size: 12px; }
 .only-mobile { display: none !important; }
-.stats { align-items: stretch; }
-.stat { display: flex; flex-direction: column; justify-content: flex-start; }
 .scanbar { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
 .toggle:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
 .toggle input { accent-color: var(--accent); margin: 0; }
@@ -141,15 +139,15 @@ input.field { font: inherit; width: 100%; padding: 6px 10px; border: 1px solid v
 .pager { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-top: 12px; }
 .pager .actions { align-items: center; }
 select { font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.stat { font: inherit; color: inherit; text-align: left; cursor: pointer; background: color-mix(in srgb, var(--c, var(--accent)) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 28%, var(--border)); border-radius: 10px; padding: 10px 14px; min-width: 0; transition: box-shadow .12s ease, transform .12s ease; }
-.stat:hover { box-shadow: 0 2px 10px color-mix(in srgb, var(--c, var(--accent)) 22%, transparent); }
-.stat.active { box-shadow: 0 0 0 2px var(--c, var(--accent)); }
-.stat .label { display: block; color: var(--muted); font-size: 12px; }
-.stat .sub { display: block; color: var(--muted); font-size: 12px; }
-.stat b { display: block; font-size: 22px; color: var(--c, var(--text)); }
-.stat.zero { background: var(--panel); border-color: var(--border); }
-.stat.zero b { color: var(--muted); }
+/* Filter pills above the table: each shows a count and filters the table. */
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.pill { font: inherit; font-size: 13px; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--c, var(--accent)) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 28%, var(--border)); transition: box-shadow .12s ease; }
+.pill:hover { box-shadow: 0 2px 10px color-mix(in srgb, var(--c, var(--accent)) 22%, transparent); }
+.pill.active { box-shadow: 0 0 0 2px var(--c, var(--accent)); }
+.pill b { color: var(--c, var(--text)); }
+.pill.zero { background: var(--panel); border-color: var(--border); }
+.pill.zero b { color: var(--muted); }
 table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
@@ -281,14 +279,11 @@ a.ext::after { content: " ↗"; font-size: .85em; }
 
   .conn .pop { right: 0; left: auto; min-width: 240px; }
   main { padding-top: 6px; }
-  /* Stat boxes: one compact row that scrolls sideways. */
-  /* Scrolling clips overflow on both axes, so leave room for the active ring. */
-  .stats { display: flex; overflow-x: auto; gap: 6px; margin: 0 -12px 6px; padding: 4px 12px; scrollbar-width: none; }
-  .stats::-webkit-scrollbar { display: none; }
-  .stat { flex: 0 0 auto; flex-direction: row; padding: 5px 10px; border-radius: 8px; align-items: baseline; gap: 6px; }
-  .stat b { font-size: 16px; display: inline; }
-  .stat .label { display: inline; font-size: 12px; white-space: nowrap; }
-  .stat .sub { display: none; }
+  /* Filter pills: one row that scrolls sideways. Scrolling clips overflow on
+     both axes, so leave room for the active ring. */
+  .pills { flex-wrap: nowrap; overflow-x: auto; margin: 0 -12px 6px; padding: 4px 12px; scrollbar-width: none; }
+  .pills::-webkit-scrollbar { display: none; }
+  .pill { flex: none; padding: 3px 10px; white-space: nowrap; }
   .toolbar { gap: 6px; margin-bottom: 8px; }
   input[type=search] { width: 100%; order: -1; }
   .toolbar .spacer { display: none; }

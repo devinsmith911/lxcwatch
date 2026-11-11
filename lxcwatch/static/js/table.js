@@ -1,5 +1,5 @@
-// The main view: stat boxes, toolbar, batch progress, the container table and paging.
-import { AUTO_NAME, AUTO_POLICIES, COLUMNS, DEFAULT_COLUMNS, Ext, KIND_LABEL, STEP_BADGE, ago, api, duration, html, isUnknown, notScript, post, problem, retired, rowState, state, store, until, update, useLayoutEffect, useRef } from "./core.js";
+// The main view: filter pills, toolbar, batch progress, the container table and paging.
+import { AUTO_NAME, AUTO_POLICIES, COLUMNS, DEFAULT_COLUMNS, Ext, KIND_LABEL, STEP_BADGE, ago, api, duration, html, isUnknown, needsUpdate, notScript, post, problem, retired, rowState, state, store, until, update, useLayoutEffect, useRef } from "./core.js";
 import { attempt, openDetails, openDialog, openJob, refresh, setAutoPolicy, startUpdate } from "./actions.js";
 import { openUpdateAll } from "./dialogs.js";
 
@@ -55,6 +55,7 @@ function visible() {
     if (state.hideStopped && c.status !== "running") return false;
     if (state.hideNonScript && notScript(c)) return false;
     if (state.filter === "unknown" && !isUnknown(c)) return false;
+    if (state.filter === "updates" && !needsUpdate(c)) return false;
     if (state.filter === "app" && !c.outdated) return false;
     if (state.filter === "packages" && !c.pkg_count) return false;
     if (state.filter === "security" && !c.pkg_security) return false;
@@ -79,31 +80,39 @@ function setFilter(f) {
   update();
 }
 
+// One pill per filter: [filter, label, colour].
+const PILLS = [
+  ["all", "All", "--accent"],
+  ["updates", "Updates", "--warn"],
+  ["app", "App", "--warn"],
+  ["packages", "Packages", "--info"],
+  ["security", "Security", "--bad"],
+  ["problems", "Problems", "--bad"],
+  ["unknown", "Unknown", "--idle"],
+];
+
 function Stats() {
   const strip = useRef();
-  // On mobile the boxes scroll sideways: bring the selected one into view
+  // On mobile the pills scroll sideways: bring the selected one into view
   // (scrollLeft only, so the page itself doesn't jump).
   useLayoutEffect(() => {
-    const el = strip.current, active = el.querySelector(".stat.active");
+    const el = strip.current, active = el.querySelector(".pill.active");
     if (active && (active.offsetLeft < el.scrollLeft || active.offsetLeft + active.offsetWidth > el.scrollLeft + el.clientWidth)) {
       el.scrollTo({ left: active.offsetLeft - 12, behavior: "smooth" });
     }
   }, [state.filter]);
   const cs = state.data?.containers;
-  const running = cs?.filter(c => c.status === "running").length;
-  // Each box filters the table; clicking the active one shows everything again.
-  const stats = cs ? [
-    ["all", "Containers", cs.length, "--accent", `${running} running · ${cs.length - running} stopped`],
-    ["app", "App updates", cs.filter(c => c.outdated).length, "--warn"],
-    ["packages", "Package updates", cs.filter(c => c.pkg_count).length, "--info"],
-    ["security", "Security", cs.filter(c => c.pkg_security).length, "--bad"],
-    ["problems", "Problems", cs.filter(problem).length, "--bad"],
-    ["unknown", "Unknown version", cs.filter(isUnknown).length, "--idle"],
-  ] : [];
-  return html`<div class="stats" id="stats" ref=${strip}>${stats.map(([f, k, v, color, sub]) => {
-    const live = v || f === "all";
-    return html`<button key=${f} class="stat${live ? "" : " zero"}${state.filter === f ? " active" : ""}" aria-pressed=${String(state.filter === f)}
-      style="--c: var(${live ? color : "--idle"})" onClick=${() => setFilter(f)}><b>${v}</b><span class="label">${k}</span>${sub && html`<span class="sub">${sub}</span>`}</button>`;
+  if (!cs) return html`<div class="pills" id="stats" ref=${strip}></div>`;
+  const running = cs.filter(c => c.status === "running").length;
+  const n = { all: cs.length, updates: cs.filter(needsUpdate).length, app: cs.filter(c => c.outdated).length,
+    packages: cs.filter(c => c.pkg_count).length, security: cs.filter(c => c.pkg_security).length,
+    problems: cs.filter(problem).length, unknown: cs.filter(isUnknown).length };
+  // Each pill filters the table; clicking the active one shows everything again.
+  return html`<div class="pills" id="stats" role="group" aria-label="Filter containers" ref=${strip}>${PILLS.map(([f, label, color]) => {
+    const live = n[f] || f === "all";
+    return html`<button key=${f} class="pill${live ? "" : " zero"}${state.filter === f ? " active" : ""}" aria-pressed=${String(state.filter === f)}
+      title=${f === "all" ? `${running} running · ${cs.length - running} stopped` : undefined}
+      style="--c: var(${live ? color : "--idle"})" onClick=${() => setFilter(f)}>${label}<b>${n[f]}</b></button>`;
   })}</div>`;
 }
 
