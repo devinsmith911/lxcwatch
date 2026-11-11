@@ -40,6 +40,7 @@ class Cluster:
         self.nodes: dict[str, str] = {}
         self.scan_lock = asyncio.Lock()
         self.scanning: set[int] = set()
+        self.scan_progress: dict | None = None  # {"done", "total"} once a full scan knows its containers
         self.is_busy = lambda vmid: False  # set by Jobs
         self.last_error: str | None = None
         self.cluster_name: str | None = None
@@ -128,13 +129,20 @@ class Cluster:
                 return
             self.last_error = None
             sems: dict[str, asyncio.Semaphore] = {}
+            progress = self.scan_progress = {"done": 0, "total": len(cts)}
 
             async def one(ct: dict) -> None:
                 sem = sems.setdefault(ct["node"], asyncio.Semaphore(PER_NODE_PARALLEL))
                 async with sem:
-                    await self.scan_one(int(ct["vmid"]), rediscover=False)
+                    try:
+                        await self.scan_one(int(ct["vmid"]), rediscover=False)
+                    finally:
+                        progress["done"] += 1
 
-            await asyncio.gather(*(one(ct) for ct in cts))
+            try:
+                await asyncio.gather(*(one(ct) for ct in cts))
+            finally:
+                self.scan_progress = None
             self.db.set("last_scan", json.dumps({"at": time.time(), "took": round(time.time() - started, 1), "count": len(cts)}))
 
     async def scan_one(self, vmid: int, rediscover: bool = True, fresh: bool = False) -> None:

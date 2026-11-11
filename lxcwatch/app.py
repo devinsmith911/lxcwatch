@@ -326,6 +326,7 @@ async def containers(request: Request):
         "auto": _auto_status(),
         "scan": {
             "running": cluster.scan_lock.locked(),
+            "progress": cluster.scan_progress,
             "last": json.loads(last) if last else None,
             "error": cluster.last_error,
             "interval_minutes": cfg.scan_interval_minutes,

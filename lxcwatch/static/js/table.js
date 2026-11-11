@@ -113,9 +113,17 @@ function ScanInfo() {
   if (state.error) info = html`<span class="err">${state.error}</span>`;
   else if (s) {
     const next = s.next_at ? ` · next ${until(s.next_at)}` : s.interval_minutes > 0 ? "" : " · scheduled scans off";
-    info = html`${s.running ? "Scanning…" : `${s.last ? `Last scan ${ago(s.last.at)}` : "Not scanned yet"}${next}`}${s.error && html` · <span class="badge bad">${s.error}</span>`}`;
+    const scanning = s.progress?.total ? `Scanning ${s.progress.done} of ${s.progress.total}…` : "Scanning…";
+    info = html`${s.running ? scanning : `${s.last ? `Last scan ${ago(s.last.at)}` : "Not scanned yet"}${next}`}${s.error && html` · <span class="badge bad">${s.error}</span>`}`;
   }
   return html`<span class="scaninfo" id="scaninfo">${info}</span>`;
+}
+
+function ScanProgress() {
+  const s = state.data?.scan, p = s?.running && s.progress;
+  if (!p?.total) return null;
+  return html`<div class="bar scanprogress" id="scanprogress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax=${p.total} aria-valuenow=${p.done}>
+    <div style="width:${Math.round(p.done / p.total * 100)}%"></div></div>`;
 }
 
 async function scanNow() {
@@ -178,6 +186,7 @@ const Toolbar = () => html`<div class="toolbar">
   <span class="spacer"></span>
   <div class="scanbar">
     <${ScanInfo} />
+    <${ScanProgress} />
     <button id="scanbtn" disabled=${!!state.data?.scan.running} onClick=${scanNow}>Scan now</button>
     <button id="updateall" class="primary" onClick=${openUpdateAll}>Update all</button>
   </div>

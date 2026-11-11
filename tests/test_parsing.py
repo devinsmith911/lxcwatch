@@ -612,3 +612,26 @@ def test_error_text_names_errors_without_a_message():
     r = httpx.Response(502, request=req)
     assert error_text(httpx.HTTPStatusError("x", request=req, response=r)) == "HTTP 502 Bad Gateway"
     assert error_text(RateLimited("GitHub API rate limit reached")) == "GitHub API rate limit reached"
+
+
+def test_full_scan_reports_progress(tmp_path):
+    from lxcwatch import cluster as cl
+    from lxcwatch.db import DB
+    c = cl.Cluster.__new__(cl.Cluster)
+    c.db, c.scan_lock, c.scan_progress, c.last_error = DB(str(tmp_path)), asyncio.Lock(), None, None
+    seen = []
+
+    async def discover():
+        assert c.scan_progress is None  # the total isn't known yet
+        return [{"vmid": v, "node": "pve1"} for v in (101, 102, 103)]
+
+    async def scan_one(vmid, rediscover=True):
+        seen.append(dict(c.scan_progress))
+        if vmid == 102:
+            raise RuntimeError("boom")  # a failed container still counts as done
+
+    c.discover, c.scan_one = discover, scan_one
+    with pytest.raises(RuntimeError):
+        asyncio.run(c._scan_all())
+    assert seen == [{"done": 0, "total": 3}, {"done": 1, "total": 3}, {"done": 2, "total": 3}]
+    assert c.scan_progress is None
