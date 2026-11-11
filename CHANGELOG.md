@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.4.5 (2026-11-11)
 
 ### Added
 - While a scan runs, the dashboard shows how far it has got, as `Scanning 7 of 23…` with a progress bar next to **Scan now**.
