@@ -138,8 +138,10 @@ jobs:
         name: Check out
         uses: actions/checkout@v4
       -
+        # apt-ftparchive is usually on the runner already; only reach for the
+        # network (where a DNS hiccup once failed a release) when it isn't.
         name: Install tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends apt-utils >/dev/null
+        run: command -v apt-ftparchive >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends apt-utils >/dev/null; }
       -
         # Every deploy replaces the whole site, so fetch all the versions to keep.
         name: Fetch the latest packages
