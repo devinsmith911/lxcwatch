@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.4.6 (2026-11-11)
 
 ### Changed
 - The boxes above the container table are now one row of filter pills, which leaves more room for the table. A new **Updates** pill shows every container with an app or package update pending. **App**, **Packages**, **Security**, **Problems** and **Unknown** work as before. Hover over **All** to see how many containers are running and stopped.
