@@ -38,16 +38,19 @@ class SSH:
         # Unix socket paths max out around 104 bytes and %C adds 40.
         self.control_dir = self.dir if len(self.dir) < 56 else tempfile.mkdtemp(prefix="lxcw-", dir="/tmp")
 
-    def _args(self, host: str) -> list[str]:
+    def _args(self, host: str, tty: bool = False) -> list[str]:
         args = [
             "ssh",
+            *(["-tt"] if tty else []),
             "-o", "BatchMode=yes",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", f"UserKnownHostsFile={os.path.join(self.dir, 'known_hosts')}",
             "-o", "ConnectTimeout=10",
             "-o", "ServerAliveInterval=15",
             "-o", "ServerAliveCountMax=4",
-            "-o", "ControlMaster=auto",
+            # Interactive shells use a shared connection but never start one: a
+            # master they started would live on with the shell's terminal.
+            "-o", f"ControlMaster={'no' if tty else 'auto'}",
             "-o", f"ControlPath={os.path.join(self.control_dir, '%C')}",
             "-o", "ControlPersist=120",
             "-p", str(self.cfg.ssh_port),
@@ -62,6 +65,10 @@ class SSH:
         if not self.cfg.sudo:
             return command
         return f"sudo -n sh -c {shlex.quote(command)}"
+
+    def shell_argv(self, host: str, command: str) -> list[str]:
+        """argv for an interactive session; run it on a pty."""
+        return [*self._args(host, tty=True), self.wrap(command)]
 
     async def run(self, host: str, command: str, timeout: float = 120, input: str | None = None) -> Result:
         proc = await asyncio.create_subprocess_exec(

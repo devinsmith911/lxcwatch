@@ -4,10 +4,11 @@ import { closeDrawer, refresh } from "./actions.js";
 import { Dialogs } from "./dialogs.js";
 import { Drawer } from "./drawer.js";
 import { Header } from "./header.js";
+import { Shell } from "./shell.js";
 import { Dashboard } from "./table.js";
 
 const root = document.querySelector("#app");
-const draw = () => render(html`<${Header} /><${Dashboard} /><${Drawer} /><${Dialogs} />`, root);
+const draw = () => render(html`<${Header} /><${Dashboard} /><${Drawer} /><${Dialogs} /><${Shell} />`, root);
 // Several changes in one event only redraw once.
 let queued = false;
 onUpdate(() => {

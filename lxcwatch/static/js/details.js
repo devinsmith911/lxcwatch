@@ -2,6 +2,7 @@
 import { AUTO_POLICIES, Ext, KIND_LABEL, STEP_BADGE, api, duration, fmtWhen, html, jobBadge, post, retired, state, update } from "./core.js";
 import { attempt, openDetails, openJob, refresh, runJob, setAutoPolicy, startUpdate } from "./actions.js";
 import { openReleaseUpgrade, openSettings, openSnapshot } from "./dialogs.js";
+import { openShell } from "./shell.js";
 
 const BAD_BOX = "border-color:color-mix(in srgb, var(--bad) 35%, var(--border));background:color-mix(in srgb, var(--bad) 6%, var(--panel))";
 const when = t => new Date(t * 1000).toLocaleString();
@@ -170,6 +171,7 @@ export function Details({ dr }) {
       <button disabled=${!running || busy || !c.pkgmgr} class=${c.pkg_count ? "primary" : ""} onClick=${() => startUpdate("os", [c.vmid])}>Update packages</button>
       <button disabled=${!running || busy} class=${c.restart_needed ? "primary" : ""} onClick=${() => restart(c.vmid)}>Restart</button>
       <button disabled=${c.scanning || !running} onClick=${() => rescan(c)}>${c.scanning ? "Scanning…" : "Rescan"}</button>
+      ${state.data.shell && html`<button disabled=${!running} title=${running ? "Open a root shell in this container" : "Start the container first"} onClick=${() => openShell(c.vmid)}>Shell</button>`}
       ${c.job && html`<button data-job=${c.job} onClick=${() => openJob(c.job, c.vmid)}>Live log</button>`}
     </div>
     <${Uptime} c=${c} />

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Shell** in a container's details opens a root terminal in the browser, for fixing an install by hand or running a one-off command. It runs `pct enter` on the container's node over lxcwatch's SSH connection. Set `LXCWATCH_SHELL=false` to turn it off. Behind a reverse proxy, WebSockets need to be allowed through.
+
 ## 2.4.6 (2026-11-11)
 
 ### Changed

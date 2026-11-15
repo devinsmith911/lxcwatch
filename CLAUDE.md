@@ -12,13 +12,14 @@ Web dashboard that tracks and updates the LXCs in a Proxmox cluster, built aroun
 - `lxcwatch/batch.py`: Update all, one job at a time; also runs automatic-update plans.
 - `lxcwatch/auto.py`: automatic updates: settings (kv `auto_settings`), the maintenance window, planning per container policy (`auto_policy` table), pausing after failures, the run summary.
 - `lxcwatch/release.py`: Debian release upgrades (pre-checks, source switching).
+- `lxcwatch/shell.py`: the in-browser shell. A WebSocket (`/api/containers/{vmid}/shell`) bridged to `ssh -tt <node> pct enter <vmid>` on a local pty. WebSockets skip the HTTP middleware, so the route checks sign-in and the Origin itself. The UI side is `static/js/shell.js` with the vendored xterm.js, loaded on first use.
 - `lxcwatch/notify.py`: ntfy, Pushover and webhook notifications, each item once (the `notified` table).
 - `lxcwatch/auth.py`: signed session cookies, the login lockout and Cloudflare Access JWT checks; basic auth still works for API clients.
 - `lxcwatch/db.py`: SQLite. New columns are added in `DB.__init__` with `PRAGMA table_info` plus `ALTER TABLE`, so existing installs upgrade in place.
 - `lxcwatch/static/index.html`: an empty page that loads `js/main.js`. `login.html` is the sign-in page.
 - `lxcwatch/static/css/app.css`: the dashboard's styles.
 - `lxcwatch/static/js/`: the UI, as Preact components written with `htm` and loaded as native ES modules: `core` (state, helpers, the rules for reading a container), `actions` (what buttons do: refresh, drawer, dialogs, starting jobs), `header`, `table` (the main view), `drawer` (job log, activity), `details`, `dialogs`, `main` (startup).
-- `lxcwatch/static/vendor/`: `preact-htm.js`, the unmodified Preact and htm bundle, and its licences. There's no build step or Node dependency.
+- `lxcwatch/static/vendor/`: `preact-htm.js`, the unmodified Preact and htm bundle, xterm.js for the shell, and their licences. There's no build step or Node dependency.
 - `packaging/`: `build-deb.sh` and the maintainer scripts. `deploy/install.sh` is the from-source install.
 - `dev/` (gitignored, local only; may not exist in a fresh clone): the fake Proxmox node and the mock-UI screenshot tools (see `dev/README.md` there).
 

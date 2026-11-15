@@ -247,6 +247,21 @@ a.ext::after { content: " ↗"; font-size: .85em; }
 .rel summary { cursor: pointer; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .rel pre { white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, Menlo, monospace; background: var(--chip); padding: 10px; border-radius: 6px; margin: 6px 0 0; max-height: 360px; overflow: auto; }
 .whatsnew { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 6%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); }
+/* The shell: a terminal over the whole page. */
+.shellwrap { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.shellpanel { width: min(1200px, 100%); height: min(820px, 100%); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+.shellpanel header { position: static; flex-wrap: nowrap; align-items: flex-start; }
+.shellpanel header > div { flex: 1; min-width: 0; }
+.shellpanel header h1 { margin: 0; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shellbar { display: flex; gap: 8px; align-items: center; padding: 8px 20px; border-bottom: 1px solid var(--border); min-height: 50px; }
+.term { flex: 1; min-height: 0; background: #0b0e12; padding: 8px 4px 8px 10px; }
+@media (max-width: 760px) {
+  .shellwrap { padding: 0; }
+  .shellpanel { width: 100%; height: 100%; border: 0; border-radius: 0; }
+  .shellpanel header { padding-top: 12px; padding-bottom: 12px; }
+  .shellpanel header h1 { font-size: 16px; }
+  .shellbar { padding: 8px 12px; }
+}
 @media (max-width: 760px) {
   .drawer header { padding-top: 12px; padding-bottom: 12px; }
   .drawer header h1 { font-size: 16px; }

@@ -36,6 +36,7 @@ It's built for containers created with the [Proxmox VE community-scripts](https:
 - **Notifications.** New updates can go to ntfy, Pushover, Slack or a webhook, set up under **Notifications** in the menu. lxcwatch also tells you when there's a new version of itself.
 - **Automatic updates, if you want them.** Off by default. Turn them on under **Automatic updates** in the menu, pick the days and maintenance window, and choose per container what gets installed: security packages, all packages, or the app and packages.
 - **Activity history.** See recent jobs across all containers, with their results and logs.
+- **A shell in each container.** **Shell** in a container's details opens a root terminal in the browser (`pct enter` on its node), for fixing an install by hand or running a one-off command.
 
 ## Screenshots
 
@@ -142,7 +143,8 @@ lxcwatch reads its settings from environment variables, which the package keeps 
 | `LXCWATCH_SLACK_WEBHOOK_URL` | — | A Slack incoming webhook URL (`https://hooks.slack.com/services/…`) |
 | `LXCWATCH_WEBHOOK_URL` | — | Receives a JSON POST: `{title, message, items: [{text, url, vmid}], url}` |
 | `LXCWATCH_NOTIFY_PACKAGES` | `security` | `none`, `security` or `all` |
-| `LXCWATCH_PUBLIC_URL` | — | lxcwatch's address, linked from notifications |
+| `LXCWATCH_PUBLIC_URL` | — | lxcwatch's address, linked from notifications and accepted as the origin of shell connections |
+| `LXCWATCH_SHELL` | `true` | `false` removes the **Shell** button and refuses shell connections |
 | `LXCWATCH_UPDATE_CHECK` | `true` | Check for new lxcwatch releases: shows a badge in the header and sends one notification per new version |
 
 The notification settings (ntfy through `LXCWATCH_PUBLIC_URL` above) can also be set in the dashboard under **Notifications** in the menu, which is usually easier. A setting given in the environment takes precedence and shows as read-only there.
@@ -154,6 +156,7 @@ A GitHub token only needs public read access: a fine-grained token with no extra
 - **Security:** the SSH key is effectively root on your whole cluster, and so is anyone who can sign in. Use a strong password and keep the UI off the internet.
 - **Signing in:** sessions last 30 days, and 10 failed sign-ins lock an address out for 15 minutes. Scripts can use HTTP basic auth. Behind a reverse proxy, pass `X-Forwarded-Proto` so the session cookie is marked secure. `/healthz` needs no sign-in.
 - **Cloudflare Access:** set `LXCWATCH_CF_ACCESS_ENABLED=true`, `LXCWATCH_CF_ACCESS_TEAM`, `LXCWATCH_CF_ACCESS_AUD` (the application's audience tag) and `LXCWATCH_CF_ACCESS_EMAILS` to skip the sign-in page. lxcwatch verifies the Access token on every request, and the listed emails sign in as the one lxcwatch account. The password keeps working, for scripts and for anyone who reaches lxcwatch without going through Access, so keep it strong.
+- **Shell:** a root shell in the container, through the same SSH connection lxcwatch uses for updates. Closing the window ends the session, and with it anything still running in the foreground, so use `screen`, `tmux` or `nohup` for long jobs. lxcwatch logs who opened a shell and when. Behind a reverse proxy, it needs WebSockets passed through, and if the proxy changes the `Host` header, set `LXCWATCH_PUBLIC_URL`: lxcwatch only accepts shell connections from its own address.
 - **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph); if one can't be taken, the update doesn't run. Rolling back restores the whole container, including app data written since the snapshot. Only automatic `lxcwatch-*` snapshots are cleaned up.
 - **Restarts:** services keep running old libraries until they restart, shown as **restart needed**. Package updates can restart the container only if needed (the default), always, or never.
 - **Debian release upgrades** run one major version at a time, never as part of Update all or automatic updates. lxcwatch runs pre-checks first and only switches official Debian sources, so third-party repositories stay on the old release.

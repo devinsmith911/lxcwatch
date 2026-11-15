@@ -68,6 +68,7 @@ class Config:
     cf_access_team: str | None  # team name, as in <team>.cloudflareaccess.com; None when Access is off
     cf_access_aud: str | None
     cf_access_emails: frozenset[str]  # lowercase; these sign in as the one account
+    shell: bool = True  # the in-browser root shell for each container
 
     @property
     def sudo(self) -> bool:
@@ -127,4 +128,5 @@ def load() -> Config:
         cf_access_team=cf_access_team,
         cf_access_aud=cf_access_aud,
         cf_access_emails=cf_access_emails,
+        shell=_bool("SHELL", True),
     )

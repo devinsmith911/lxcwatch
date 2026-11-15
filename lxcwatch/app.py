@@ -8,11 +8,11 @@ import shlex
 import time
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import __version__, auto, config, notify
+from . import __version__, auto, config, notify, shell
 from .auth import ACCESS_HEADER, COOKIE, Auth
 from .batch import BatchError, Batches
 from .cluster import Cluster, stored_self_update
@@ -335,6 +335,7 @@ async def containers(request: Request):
         "batch": batches.current,
         "self_update": stored_self_update(db),
         "version": __version__,
+        "shell": cfg.shell,
         "access_email": request.state.access_email,
         "connection": {
             "host": cfg.pve_host,
@@ -671,3 +672,40 @@ async def job_stream(job_id: str):
             jobs.unsubscribe(job_id, q)
 
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---- Shells ----
+# The HTTP middleware doesn't see WebSockets, so this does its own checks.
+
+@app.websocket("/api/containers/{vmid}/shell")
+async def container_shell(ws: WebSocket, vmid: int, cols: int = 80, rows: int = 24):
+    client = ws.client.host if ws.client else "unknown"
+    email = await auth.check_access(ws.headers.get(ACCESS_HEADER))
+    signed_in = email or auth.check_session(ws.cookies.get(COOKIE)) or auth.check_basic(ws.headers.get("authorization", ""))
+    if not (cfg.shell and signed_in and shell.same_origin(ws.headers.get("origin"), ws.headers.get("host"), cfg.public_url)):
+        log.warning("refused a shell for CT %s from %s", vmid, client)
+        await ws.close(code=1008)
+        return
+    await ws.accept()
+    ct = db.container(vmid)
+    error = ("container not found" if not ct
+             else f"CT {vmid} is {ct['status']}; start it first." if ct["status"] != "running" else None)
+    if not error:
+        try:
+            addr = await cluster.resolve(ct["node"])
+        except Exception as e:
+            error = f"couldn't reach {ct['node']}: {e}"
+    if error:
+        await ws.send_text(json.dumps({"error": error}))
+        await ws.close()
+        return
+    who = f"{email} from {client}" if email else client
+    log.info("shell opened in CT %s (%s) by %s", vmid, ct["name"], who)
+    started = time.time()
+    try:
+        rc = await shell.bridge(ws, ssh.shell_argv(addr, f"pct enter {vmid}"), cols, rows)
+    except Exception:
+        log.exception("shell in CT %s failed", vmid)
+        rc = "error"
+    log.info("shell in CT %s closed after %ds (%s)", vmid, time.time() - started,
+             "browser left" if rc is None else f"exit {rc}")
