@@ -83,6 +83,8 @@ h1 { font-size: 17px; margin: 0; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 main { padding: 16px 20px 80px; max-width: 1400px; margin: 0 auto; }
+:root[data-width="wide"] main { max-width: 2200px; }
+:root[data-width="full"] main { max-width: none; }
 button { font: inherit; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
@@ -345,6 +347,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   .ctinfo { display: none; }
   .colpick .pop { left: auto; right: 0; }
   .only-mobile { display: inline-flex !important; }
+  .hide-mobile { display: none !important; }
   td:has(> .dash:only-child) { display: none; }
   .comp { white-space: normal; }
   td .actions button { padding: 3px 9px; font-size: 12px; }

@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#4f46e5">
-<script>try { const t = JSON.parse(localStorage.getItem("lxcwatch.theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+<script>try { const t = JSON.parse(localStorage.getItem("lxcwatch.theme")); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; const w = JSON.parse(localStorage.getItem("lxcwatch.width")); if (w === "wide" || w === "full") document.documentElement.dataset.width = w; } catch {}</script>
 <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>

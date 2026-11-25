@@ -20,6 +20,20 @@ function setTheme(t) {
   update();
 }
 
+// How wide the page may get on big screens. index.html applies the stored
+// choice before the first paint, as it does for the theme.
+const WIDTHS = ["standard", "wide", "full"];
+let width = stored("width", "standard");
+if (!WIDTHS.includes(width)) width = "standard";
+
+function setWidth(w) {
+  width = w;
+  store("width", w);
+  if (w === "standard") delete document.documentElement.dataset.width;
+  else document.documentElement.dataset.width = w;
+  update();
+}
+
 async function signOut() {
   try { await api("/api/logout", { method: "POST" }); } catch {}
   location.replace("/login");
@@ -58,6 +72,9 @@ function Connection() {
 const ThemeButton = ({ value, label, title, children }) => html`
   <button class=${theme === value ? "on" : ""} title=${title} onClick=${() => setTheme(value)}><${Icon}>${children}<//>${label}</button>`;
 
+const WidthButton = ({ value, label, title, children }) => html`
+  <button class=${width === value ? "on" : ""} title=${title} aria-pressed=${String(width === value)} onClick=${() => setWidth(value)}><${Icon}>${children}<//>${label}</button>`;
+
 // No Sign out under Cloudflare Access: Access would sign the browser straight
 // back in, and its logout ends the session for every Access app.
 function Menu() {
@@ -71,6 +88,12 @@ function Menu() {
           <${ThemeButton} value="system" label="System" title="Follow the system"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><//>
           <${ThemeButton} value="light" label="Light"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/><//>
           <${ThemeButton} value="dark" label="Dark"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/><//>
+        </span></div>
+      <div class="menusec hide-mobile" id="widthsec"><span class="muted menulabel">Page width</span>
+        <span class="seg wide" role="group" aria-label="Page width">
+          <${WidthButton} value="standard" label="Standard" title="Up to 1400 pixels"><rect x="7" y="4" width="10" height="16" rx="2"/><//>
+          <${WidthButton} value="wide" label="Wide" title="Up to 2200 pixels"><rect x="4" y="4" width="16" height="16" rx="2"/><//>
+          <${WidthButton} value="full" label="Full" title="The whole window"><path d="M3 12h18M6 9l-3 3 3 3M18 9l3 3-3 3"/><//>
         </span></div>
       <div class="menurow"><span class="muted">Version <span id="version">${!state.data ? "—" : v && v !== "dev" ? v : "development build"}</span></span>${" "}
         <a href="https://github.com/devinsmith911/lxcwatch/releases" target="_blank" rel="noopener" class="ext">Release notes</a></div>
