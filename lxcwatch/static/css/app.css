@@ -152,6 +152,23 @@ table { width: 100%; border-collapse: collapse; background: var(--panel); border
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
 tr:last-child td { border-bottom: 0; }
+th.c-select { width: 28px; }
+/* Resizable columns: a grip on each heading's right edge. Once a column has
+   been dragged, the widths are fixed and the table scrolls sideways if needed. */
+.tablewrap { overflow-x: auto; }
+th { position: relative; }
+.colgrip { position: absolute; top: 0; right: 0; bottom: 0; width: 9px; cursor: col-resize; touch-action: none; }
+.colgrip::after { content: ""; position: absolute; top: 7px; bottom: 7px; left: 4px; width: 1px; background: var(--border); }
+.colgrip:hover::after, .colgrip:focus-visible::after, .resizing .colgrip:active::after { width: 3px; left: 3px; border-radius: 2px; background: var(--accent); }
+.colgrip:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+@media (min-width: 761px) {
+  table.sized { table-layout: fixed; width: var(--tw); min-width: 100%; }
+  table.sized th.c-select { width: 40px; }
+  table.sized th, table.sized td { overflow: hidden; overflow-wrap: anywhere; }
+  table.sized td.c-node, table.sized td.c-auto, table.sized td.c-uptime, table.sized td.c-scanned { text-overflow: ellipsis; }
+  table.sized .comp, table.sized td.c-app .badge, table.sized td.c-packages .badge { white-space: normal; }
+}
 /* Sortable headings: the arrow shows faintly on hover, fully when sorted. */
 th .sorth { all: unset; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
 th .sorth:hover, th .sorth.on { color: var(--text); }
@@ -308,6 +325,7 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   .bar.scanprogress { width: 48px; }
   /* Rows as compact cards: name + time, app, packages, actions. */
   thead { display: none; }
+  .tablewrap { overflow: visible; }
   table, tbody { display: block; width: 100%; }
   /* Each card: name and scan time, then a line of node, auto, uptime and tags,
      then app, packages and actions. Whichever columns are hidden just drop out. */

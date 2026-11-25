@@ -161,6 +161,7 @@ function ColumnPicker() {
         onChange=${e => setColumns(e.target.checked ? [...on, k] : on.filter(x => x !== k))} /> ${label}</label>`)}
       <hr />
       <button disabled=${!custom} onClick=${() => setColumns(DEFAULT_COLUMNS)}>Reset to default</button>
+      <button id="resetwidths" disabled=${!sized()} title="Let the browser size the columns again" onClick=${resetWidths}>Reset widths</button>
     </div>
   </details>`;
 }
@@ -180,10 +181,75 @@ function SortPicker() {
   </span>`;
 }
 
+// Column widths. Until the first drag the browser sizes the columns. The first
+// drag takes every column's current width, and from then on the table uses those
+// fixed widths (desktop only): the actions column gets whatever is left, and the
+// table scrolls sideways if the columns add up to more than the page.
+const MIN_W = 56, SELECT_W = 40;
+// For a column shown after the widths were fixed.
+const DEFAULT_W = { container: 200, node: 90, tags: 130, app: 300, packages: 220, auto: 110, uptime: 90, scanned: 100 };
+const sized = () => Object.keys(state.colWidths).length > 0;
+const colWidth = k => state.colWidths[k] || DEFAULT_W[k];
+const tableWidth = () => SELECT_W + state.columns.reduce((n, k) => n + colWidth(k), 0) + (state.colWidths.actions || 200);
+
+function saveWidths() {
+  store("colWidths", state.colWidths);
+}
+
+function resetWidths() {
+  state.colWidths = {};
+  saveWidths();
+  update();
+}
+
+// Keep each column where it is when the first drag switches to fixed widths.
+function fixWidths(table) {
+  if (sized()) return;
+  for (const th of table.querySelectorAll("th[data-col]")) state.colWidths[th.dataset.col] = Math.round(th.getBoundingClientRect().width);
+}
+
+function setWidth(k, w) {
+  state.colWidths[k] = Math.max(MIN_W, Math.round(w));
+  update();
+}
+
+function startResize(e, k) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const grip = e.currentTarget, x0 = e.clientX;
+  fixWidths(grip.closest("table"));
+  const w0 = colWidth(k);
+  grip.setPointerCapture(e.pointerId);
+  document.body.classList.add("resizing");
+  const move = ev => setWidth(k, w0 + ev.clientX - x0);
+  const done = () => {
+    grip.removeEventListener("pointermove", move);
+    grip.removeEventListener("pointerup", done);
+    grip.removeEventListener("pointercancel", done);
+    document.body.classList.remove("resizing");
+    saveWidths();
+  };
+  grip.addEventListener("pointermove", move);
+  grip.addEventListener("pointerup", done);
+  grip.addEventListener("pointercancel", done);
+}
+
+// The arrow keys resize too, for keyboard users.
+function resizeKey(e, k) {
+  const step = e.key === "ArrowRight" ? 16 : e.key === "ArrowLeft" ? -16 : 0;
+  if (!step) return;
+  e.preventDefault();
+  fixWidths(e.currentTarget.closest("table"));
+  setWidth(k, colWidth(k) + step);
+  saveWidths();
+}
+
 function SortHeader({ k }) {
   const s = activeSort(), on = s?.key === k;
-  return html`<th class="c-${k}" aria-sort=${on ? (s.dir === "asc" ? "ascending" : "descending") : undefined}>
-    <button type="button" class="sorth${on ? " on" : ""}" onClick=${() => cycleSort(k)}>${colLabel(k)}<span class="sortarrow" aria-hidden="true">${on ? (s.dir === "asc" ? "↑" : "↓") : "↕"}</span></button></th>`;
+  return html`<th class="c-${k}" data-col=${k} style=${sized() ? `width:${colWidth(k)}px` : undefined} aria-sort=${on ? (s.dir === "asc" ? "ascending" : "descending") : undefined}>
+    <button type="button" class="sorth${on ? " on" : ""}" onClick=${() => cycleSort(k)}>${colLabel(k)}<span class="sortarrow" aria-hidden="true">${on ? (s.dir === "asc" ? "↑" : "↓") : "↕"}</span></button>
+    <span class="colgrip" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the ${colLabel(k)} column" title="Drag to resize"
+      onPointerDown=${e => startResize(e, k)} onKeyDown=${e => resizeKey(e, k)}></span></th>`;
 }
 
 const Toolbar = () => html`<div class="toolbar">
@@ -326,14 +392,14 @@ function selectPage(on) {
 
 function Table() {
   const shown = state.data ? pageOf(visible()).shown : [];
-  return html`<table>
+  return html`<div class="tablewrap"><table class=${sized() ? "sized" : undefined} style=${sized() ? `--tw:${tableWidth()}px` : undefined}>
     <thead><tr>
-      <th style="width:28px"><input type="checkbox" id="selall" aria-label="Select all" checked=${shown.length > 0 && shown.every(c => state.selected.has(c.vmid))} onChange=${e => selectPage(e.target.checked)} /></th>
-      ${state.columns.map(k => html`<${SortHeader} key=${k} k=${k} />`)}<th></th>
+      <th class="c-select"><input type="checkbox" id="selall" aria-label="Select all" checked=${shown.length > 0 && shown.every(c => state.selected.has(c.vmid))} onChange=${e => selectPage(e.target.checked)} /></th>
+      ${state.columns.map(k => html`<${SortHeader} key=${k} k=${k} />`)}<th class="c-actions" data-col="actions"></th>
     </tr></thead>
     <tbody id="rows">${!state.data ? null : shown.length ? shown.map(c => html`<${Row} key=${c.vmid} c=${c} />`)
       : html`<tr class="empty"><td colspan=${state.columns.length + 2} class="muted">Nothing here.</td></tr>`}</tbody>
-  </table>`;
+  </table></div>`;
 }
 
 function goPage(delta) {

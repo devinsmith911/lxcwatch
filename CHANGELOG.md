@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Columns in the container table can be resized: drag the edge of a column heading, or focus it and use the arrow keys. Widths are remembered in your browser. If the columns add up to more than the page is wide, the table scrolls sideways. **Columns → Reset widths** puts them back to automatic sizing.
+
 ## 2.5.0 (2026-11-15)
 
 ### Added

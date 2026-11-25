@@ -27,11 +27,18 @@ function storedColumns() {
   const v = stored("columns", null);
   return Array.isArray(v) ? v.filter(k => COLUMNS.some(([c]) => c === k)) : DEFAULT_COLUMNS;
 }
+// Column widths the user dragged, in pixels by column key (plus "actions", the
+// least the actions column gets). Empty means the browser sizes the columns.
+function storedWidths() {
+  const v = stored("colWidths", null);
+  return v && typeof v === "object" && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v).filter(([, w]) => Number.isFinite(w) && w > 0)) : {};
+}
 
 export const state = {
   data: null, error: null, filter: "all", q: "", selected: new Set(), drawer: null, dialog: null, shell: null,
   page: 1, pageSize: stored("pageSize", 10), hideStopped: stored("hideStopped", false), hideNonScript: stored("hideNonScript", false),
-  columns: storedColumns(),
+  columns: storedColumns(), colWidths: storedWidths(),
   sort: stored("sort", null),  // {key, dir} or null for the server's order
   bulkSnapshot: false, batchStopping: false, activityFilter: "all",
 };
