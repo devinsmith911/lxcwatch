@@ -19,6 +19,6 @@ The **Release** workflow then:
 
 To create or refresh the release for an existing tag, run the workflow by hand: **Actions → Release → Run workflow**, then enter the tag.
 
-If the Pages deploy fails, run the workflow by hand instead of using **Re-run failed jobs**. A re-run uploads a second `github-pages` artifact to the same run, and the deploy then fails with `Multiple artifacts named "github-pages"`. A manual run starts clean, but it rebuilds the `.deb` and replaces the one on the release.
+The site is uploaded in the `pages` job and deployed in a separate `deploy` job, which retries once after 30 seconds if the new artifact isn't visible yet ([actions/deploy-pages#451](https://github.com/actions/deploy-pages/issues/451)). If the deploy still fails, use **Re-run failed jobs**: that re-runs only `deploy`, against the artifact that's already there. Don't re-run `pages` on its own: a second `github-pages` artifact in the same run makes the deploy fail with `Multiple artifacts named "github-pages"`. In that case run the workflow by hand instead. That starts clean, but it rebuilds the `.deb` and replaces the one on the release.
 
 The workflow needs an `APT_SIGNING_KEY` repository secret: the armored private key that signs the apt repository. Users trust its public half, so replacing the key means every install has to fetch the new one. Pages must be set to deploy from GitHub Actions, and the `github-pages` environment must allow `[0-9]*` tags as well as `main`.

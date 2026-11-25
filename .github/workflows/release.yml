@@ -124,13 +124,6 @@ jobs:
   pages:
     runs-on: ubuntu-26.04
     needs: release
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       -
         # The workflow's own commit, not the tag: an older tag being re-released
@@ -164,7 +157,32 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
+
+  # A job of its own: deploy-pages straight after the upload in the same job
+  # often can't see the new artifact yet (actions/deploy-pages#451), and a job
+  # can be re-run without uploading a second github-pages artifact.
+  deploy:
+    runs-on: ubuntu-26.04
+    needs: pages
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url || steps.retry.outputs.page_url }}
+    steps:
       -
         name: Deploy
         id: deploy
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      -
+        # The artifact can take a while to show up in the listing.
+        name: Wait before retrying
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 30
+      -
+        name: Deploy (retry)
+        id: retry
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5
