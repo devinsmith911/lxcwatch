@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.6.1 (2026-11-25)
 
 ### Added
 - **Page width** in the settings menu lets the dashboard use more of a large screen: **Standard** (up to 1400 pixels, as before), **Wide** (up to 2200) or **Full** (the whole window). The choice is remembered in your browser.
