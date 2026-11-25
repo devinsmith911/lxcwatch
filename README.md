@@ -53,7 +53,7 @@ These use made-up data.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
-  <img src="docs/screenshots/settings-light.png" alt="The settings dialog with the maintenance window, days, release wait and snapshot options">
+  <img src="docs/screenshots/settings-light.png" alt="The automatic updates dialog with the maintenance window, days, release wait and snapshot options">
 </picture>
 
 **Activity:** recent jobs across all containers.
