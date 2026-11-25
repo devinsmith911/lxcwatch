@@ -96,7 +96,8 @@ function Menu() {
           <${WidthButton} value="full" label="Full" title="The whole window"><path d="M3 12h18M6 9l-3 3 3 3M18 9l3 3-3 3"/><//>
         </span></div>
       <div class="menurow"><span class="muted">Version <span id="version">${!state.data ? "—" : v && v !== "dev" ? v : "development build"}</span></span>${" "}
-        <a href="https://github.com/devinsmith911/lxcwatch/releases" target="_blank" rel="noopener" class="ext">Release notes</a></div>
+        <span class="menulinks"><a href="https://github.com/devinsmith911/lxcwatch" target="_blank" rel="noopener" class="ext">GitHub</a>${" "}
+        <a href="https://github.com/devinsmith911/lxcwatch/releases" target="_blank" rel="noopener" class="ext">Release notes</a></span></div>
       <hr />
       <button id="settingsbtn" class="menuitem" onClick=${openSettings}><${Icon}><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/><//>Automatic updates</button>
       <button id="notifybtn" class="menuitem" onClick=${openNotifications}><${Icon}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><//>Notifications</button>

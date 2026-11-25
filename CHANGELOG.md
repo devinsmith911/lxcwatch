@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.6.2 (2026-11-25)
+
+### Added
+- The settings menu links to lxcwatch's GitHub repository, next to **Release notes**.
+
 ## 2.6.1 (2026-11-25)
 
 ### Added

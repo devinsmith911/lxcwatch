@@ -54,6 +54,9 @@ header.hero details[open] > summary.hbtn { background: rgba(255,255,255,.26); }
 #accessemail { font-size: 13px; overflow-wrap: anywhere; }
 .menu .pop .menulabel { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 500; }
 .menu .pop .menurow { align-items: baseline; padding: 4px 8px 8px; font-size: 13px; }
+.menu .pop .menurow { flex-wrap: wrap; row-gap: 4px; }
+.menu .pop .menurow > * { white-space: nowrap; }
+.menu .pop .menulinks { display: flex; gap: 10px; }
 .menu .pop hr { border: 0; border-top: 1px solid var(--border); margin: 0 0 6px; }
 .menu .pop button { background: var(--panel); color: var(--text); border-color: var(--border); }
 .menu .pop button:hover:not(:disabled) { background: var(--chip); border-color: var(--border); }
