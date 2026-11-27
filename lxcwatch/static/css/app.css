@@ -145,7 +145,16 @@ input.field { font: inherit; width: 100%; padding: 6px 10px; border: 1px solid v
 .pager .actions { align-items: center; }
 select { font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
 /* Filter pills above the table: each shows a count and filters the table. */
-.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 12px; }
+.pillgroup { display: flex; flex-wrap: wrap; gap: 6px; }
+/* LXC / VM switch: a segmented control, set apart from the status pills. */
+.typeseg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.typeseg button { font: inherit; font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 3px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
+.typeseg button b { font-weight: 600; color: inherit; opacity: .75; }
+.typeseg button:hover { color: var(--text); background: transparent; }
+.typeseg button.on, .typeseg button.on:hover { background: var(--accent-soft); color: var(--accent); }
+.typeseg button.on b { opacity: 1; }
+.pillsep { width: 1px; align-self: stretch; margin: 3px 2px; background: var(--border); }
 .pill { font: inherit; font-size: 13px; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
   background: color-mix(in srgb, var(--c, var(--accent)) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 28%, var(--border)); transition: box-shadow .12s ease; }
 .pill:hover { box-shadow: 0 2px 10px color-mix(in srgb, var(--c, var(--accent)) 22%, transparent); }
@@ -319,6 +328,9 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   /* Filter pills: one row that scrolls sideways. Scrolling clips overflow on
      both axes, so leave room for the active ring. */
   .pills { flex-wrap: nowrap; overflow-x: auto; margin: 0 -12px 6px; padding: 4px 12px; scrollbar-width: none; }
+  .pillgroup { flex-wrap: nowrap; }
+  .typeseg { flex: none; }
+  .typeseg button { padding: 2px 9px; white-space: nowrap; }
   .pills::-webkit-scrollbar { display: none; }
   .pill { flex: none; padding: 3px 10px; white-space: nowrap; }
   .toolbar { gap: 6px; margin-bottom: 8px; }

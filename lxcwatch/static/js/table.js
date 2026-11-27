@@ -52,6 +52,7 @@ function cycleSort(key) {
 function visible() {
   const q = state.q.toLowerCase();
   return sorted(state.data.containers.filter(c => {
+    if (!ofType(c)) return false;
     if (state.hideStopped && c.status !== "running") return false;
     if (state.hideNonScript && notScript(c)) return false;
     if (state.filter === "unknown" && !isUnknown(c)) return false;
@@ -60,7 +61,6 @@ function visible() {
     if (state.filter === "packages" && !c.pkg_count) return false;
     if (state.filter === "security" && !c.pkg_security) return false;
     if (state.filter === "problems" && !problem(c)) return false;
-    if (state.filter === "vms" && !isVM(c)) return false;
     if (q && ![c.vmid, c.name, c.node, ...c.tags, c.script, isVM(c) ? "vm" : "ct"].join(" ").toLowerCase().includes(q)) return false;
     return true;
   }));
@@ -90,8 +90,31 @@ const PILLS = [
   ["security", "Security", "--bad"],
   ["problems", "Problems", "--bad"],
   ["unknown", "Unknown", "--idle"],
-  ["vms", "VMs", "--accent"],  // only shown when the cluster has VMs
 ];
+
+// Which kind of guest to show; combines with the status pills.
+const GUEST_TYPES = [["all", "All"], ["lxc", "LXCs"], ["qemu", "VMs"]];
+// Only while the switch is shown: a remembered "VMs" mustn't empty a cluster without VMs.
+const bothTypes = () => { const cs = state.data?.containers || []; return cs.some(isVM) && cs.some(c => !isVM(c)); };
+const ofType = c => state.guestType === "all" || !bothTypes() || (c.type || "lxc") === state.guestType;
+
+function setGuestType(t) {
+  state.guestType = t;
+  store("guestType", t);
+  state.page = 1;
+  update();
+}
+
+// A segmented control, only when the cluster has both containers and VMs.
+function TypeFilter({ cs }) {
+  const n = { all: cs.length, qemu: cs.filter(isVM).length };
+  n.lxc = n.all - n.qemu;
+  if (!n.qemu || !n.lxc) return null;
+  return html`<div class="typeseg" role="group" aria-label="Show containers or VMs">${GUEST_TYPES.map(([t, label]) => html`
+    <button key=${t} type="button" class=${state.guestType === t ? "on" : undefined} aria-pressed=${String(state.guestType === t)}
+      onClick=${() => setGuestType(t)}>${label}<b>${n[t]}</b></button>`)}</div>
+    <span class="pillsep" aria-hidden="true"></span>`;
+}
 
 function Stats() {
   const strip = useRef();
@@ -103,19 +126,21 @@ function Stats() {
       el.scrollTo({ left: active.offsetLeft - 12, behavior: "smooth" });
     }
   }, [state.filter]);
-  const cs = state.data?.containers;
-  if (!cs) return html`<div class="pills" id="stats" ref=${strip}></div>`;
+  const all = state.data?.containers;
+  if (!all) return html`<div class="pills" id="stats" ref=${strip}></div>`;
+  // The status counts follow the LXC/VM choice.
+  const cs = all.filter(ofType);
   const running = cs.filter(c => c.status === "running").length;
   const n = { all: cs.length, updates: cs.filter(needsUpdate).length, app: cs.filter(c => c.outdated).length,
     packages: cs.filter(c => c.pkg_count).length, security: cs.filter(c => c.pkg_security).length,
-    problems: cs.filter(problem).length, unknown: cs.filter(isUnknown).length, vms: cs.filter(isVM).length };
+    problems: cs.filter(problem).length, unknown: cs.filter(isUnknown).length };
   // Each pill filters the table; clicking the active one shows everything again.
-  return html`<div class="pills" id="stats" role="group" aria-label="Filter containers" ref=${strip}>${PILLS.filter(([f]) => f !== "vms" || n.vms).map(([f, label, color]) => {
+  return html`<div class="pills" id="stats" ref=${strip}><${TypeFilter} cs=${all} /><div class="pillgroup" role="group" aria-label="Filter by status">${PILLS.map(([f, label, color]) => {
     const live = n[f] || f === "all";
     return html`<button key=${f} class="pill${live ? "" : " zero"}${state.filter === f ? " active" : ""}" aria-pressed=${String(state.filter === f)}
       title=${f === "all" ? `${running} running · ${cs.length - running} stopped` : undefined}
       style="--c: var(${live ? color : "--idle"})" onClick=${() => setFilter(f)}>${label}<b>${n[f]}</b></button>`;
-  })}</div>`;
+  })}</div></div>`;
 }
 
 function ScanInfo() {

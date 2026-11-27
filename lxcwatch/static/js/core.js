@@ -41,6 +41,7 @@ export const state = {
   columns: storedColumns(), colWidths: storedWidths(),
   sort: stored("sort", null),  // {key, dir} or null for the server's order
   bulkSnapshot: false, batchStopping: false, activityFilter: "all",
+  guestType: ["all", "lxc", "qemu"].includes(stored("guestType", "all")) ? stored("guestType", "all") : "all",
   pkgPop: null,  // the package popover: {vmid, pinned, below, above, left}
 };
 
