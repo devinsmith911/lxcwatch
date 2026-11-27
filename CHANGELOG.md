@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.0.1 (2026-11-27)
 
 ### Fixed
 - On phones, tapping a container no longer leaves a patchy highlight on its card, and a selected card is tinted evenly. The node and VM badges stay visible on selected rows.
