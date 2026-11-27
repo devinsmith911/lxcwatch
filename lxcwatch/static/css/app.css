@@ -195,6 +195,8 @@ th .sorth.on .sortarrow { opacity: 1; color: var(--accent); }
 .sortpick button { padding: 2px 9px; border-radius: 999px; font-size: 12px; }
 td.c-node, td.c-auto, td.c-uptime, td.c-scanned { white-space: nowrap; }
 tr.selected td { background: var(--accent-soft); }
+/* Badges tinted like the selection would vanish on a selected row. */
+tr.selected .badge.node, tr.selected .badge.vm { background: var(--panel); }
 .name .dot { margin-right: 6px; vertical-align: 1px; background: var(--row, var(--idle)); }
 tr.r-security { --row: var(--bad); }
 tr.r-outdated { --row: var(--warn); }
@@ -202,7 +204,8 @@ tr.r-current { --row: var(--ok); }
 tr.r-unknown { --row: var(--info); }
 tr.r-stopped { --row: var(--idle); }
 tr.r-stopped .name { color: var(--muted); }
-tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+/* Only with a real pointer: touch screens keep :hover stuck on the last row tapped. */
+@media (hover: hover) { tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); } }
 .name { font-weight: 600; }
 .badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: 12px; line-height: 1.4; vertical-align: middle; white-space: nowrap; background: var(--chip); margin: 1px 2px 1px 0; }
 .badge.ok { background: var(--ok-bg); color: var(--ok); }
@@ -349,6 +352,9 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   tbody tr { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 3px; padding: 8px 10px 8px 38px; border-bottom: 1px solid var(--border); }
   tbody tr::after { content: ""; order: 3; flex-basis: 100%; height: 0; margin-top: -3px; }
   tbody tr.empty { display: block; padding: 8px 10px; }
+  /* Cards: tint the whole card, not each cell (the cells are separate blocks). */
+  tbody tr td, tbody tr:hover td, tbody tr.selected td { background: transparent; }
+  tbody tr.selected { background: var(--accent-soft); }
   tbody tr.empty::after { content: none; }
   td { display: block; border: 0; padding: 0; min-width: 0; }
   td.c-select { position: absolute; left: 10px; top: 8px; }
