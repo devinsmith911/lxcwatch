@@ -41,6 +41,7 @@ function Confirm({ kind, cs }) {
 
 function AppChanges({ c }) {
   const out = c.components.filter(x => x.state === "outdated");
+  if (!out.length && !c.script) return html`pulls and restarts ${c.compose.map(p => p.name).join(", ")} (docker compose)`;
   if (!out.length) return html`runs <code>update</code> (also updates packages)`;
   return out.map((x, i) => html`${i > 0 && ", "}${x.name} ${x.installed} → ${x.target}${x.release_url && html` <${Ext} href=${x.release_url}>notes<//>`}`);
 }

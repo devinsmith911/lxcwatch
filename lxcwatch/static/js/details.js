@@ -1,5 +1,5 @@
 // The container details panel in the drawer.
-import { AUTO_POLICIES, Ext, KIND_LABEL, STEP_BADGE, api, duration, fmtWhen, html, jobBadge, post, retired, state, update } from "./core.js";
+import { AUTO_POLICIES, Ext, KIND_LABEL, STEP_BADGE, api, canAppUpdate, duration, fmtWhen, html, jobBadge, post, retired, state, update } from "./core.js";
 import { attempt, openDetails, openJob, refresh, runJob, setAutoPolicy, startUpdate } from "./actions.js";
 import { openReleaseUpgrade, openSettings, openSnapshot } from "./dialogs.js";
 import { openShell } from "./shell.js";
@@ -50,20 +50,34 @@ function ReleaseNotes({ dr, x }) {
 }
 
 function Component({ dr, x }) {
+  const compose = x.source === "compose";
   const links = [
     x.source === "apt" && html`<span class="muted small">apt package${x.origin ? ` from ${x.origin}` : ""}</span>`,
+    compose && html`<span class="muted small"><code>${x.image}</code>${x.container_state && x.container_state !== "running" ? ` · ${x.container_state}` : ""}</span>`,
     x.release_url && html`<${Ext} href=${x.release_url}>Release ${x.target_tag}<//>`,
     x.repo && html`<${Ext} href=${x.releases_url}>All releases<//><${Ext} href=${x.repo_url}>${x.repo}<//>`,
     x.homepage && !(x.repo_url && x.homepage.startsWith(x.repo_url)) && html`<${Ext} href=${x.homepage}>Project site<//>`,
     x.package_url && html`<${Ext} href=${x.package_url}>${x.origin} package<//>`,
   ].filter(Boolean);
-  const badge = x.state === "outdated" ? html`<span class="badge warn">update</span>` : x.state === "current" ? html`<span class="badge ok">current</span>` : html`<span class="badge info">${x.state}</span>`;
+  const badge = x.state === "outdated" ? html`<span class="badge warn">update</span>` : x.state === "current" ? html`<span class="badge ok">${x.pinned && compose ? "pinned" : "current"}</span>`
+    : html`<span class="badge info">${compose && x.state === "untracked" ? "built locally" : x.state}</span>`;
   const target = x.target ?? "?";
-  return html`<div class="comp-d"><div class="head"><span><b>${x.name}</b> ${badge}</span>${" "}
+  const notes = x.state === "outdated" && x.repo && (!compose || x.target_tag);
+  return html`<div class="comp-d"><div class="head"><span><b>${compose ? x.service : x.name}</b> ${badge}</span>${" "}
     <span class="small">installed ${x.installed ?? "?"} · target ${x.release_url ? html`<a href=${x.release_url} target="_blank" rel="noopener">${target}</a>` : target}${
       x.upstream && x.upstream !== x.target && html` · upstream ${x.upstream_url ? html`<a href=${x.upstream_url} target="_blank" rel="noopener">${x.upstream}</a>` : x.upstream}`}</span></div>
     ${links.length > 0 && html`<div class="links">${links}</div>`}
-    ${x.state === "outdated" && x.repo && html`<${ReleaseNotes} dr=${dr} x=${x} />`}</div>`;
+    ${compose && x.state === "unknown" && x.error && html`<div class="err small">${x.error}</div>`}
+    ${notes && html`<${ReleaseNotes} dr=${dr} x=${x} />`}</div>`;
+}
+
+// Docker compose apps, one block per project.
+function ComposeApps({ dr, c }) {
+  return (c.compose || []).map(p => {
+    const xs = c.components.filter(x => x.source === "compose" && x.project === p.name);
+    return html`<div key=${p.name} class="compose"><div class="sectionhead small"><span><b>${p.name}</b> <span class="muted">docker compose · <code>${p.working_dir}</code></span></span></div>
+      <div class="list">${xs.map(x => html`<${Component} key=${x.name} dr=${dr} x=${x} />`)}</div></div>`;
+  });
 }
 
 function Stale({ c }) {
@@ -165,9 +179,10 @@ export function Details({ dr }) {
   if (!c) return null;
   const running = c.status === "running", busy = !!c.job;
   const missing = c.components.filter(x => x.missing_version);
+  const own = c.components.filter(x => x.source !== "compose");
   return html`
     <div class="dactions">
-      <button disabled=${!running || busy || !c.script} class=${c.outdated ? "primary" : ""} onClick=${() => startUpdate("app", [c.vmid])}>Update app</button>
+      <button disabled=${!running || busy || !canAppUpdate(c)} class=${c.outdated ? "primary" : ""} onClick=${() => startUpdate("app", [c.vmid])}>Update app</button>
       <button disabled=${!running || busy || !c.pkgmgr} class=${c.pkg_count ? "primary" : ""} onClick=${() => startUpdate("os", [c.vmid])}>Update packages</button>
       <button disabled=${!running || busy} class=${c.restart_needed ? "primary" : ""} onClick=${() => restart(c.vmid)}>Restart</button>
       <button disabled=${c.scanning || !running} onClick=${() => rescan(c)}>${c.scanning ? "Scanning…" : "Rescan"}</button>
@@ -180,7 +195,8 @@ export function Details({ dr }) {
     ${c.script && html`<div class="links">
       ${c.script_page && html`<${Ext} href=${c.script_page}>community-scripts page<//>`}
       <${Ext} href=${c.script_url}>ct/${c.script}.sh<//></div>`}
-    ${c.components.length ? html`<div class="list">${c.components.map(x => html`<${Component} key=${x.name} dr=${dr} x=${x} />`)}</div>` : html`<p class="muted">No tracked app versions.</p>`}
+    ${own.length ? html`<div class="list">${own.map(x => html`<${Component} key=${x.name} dr=${dr} x=${x} />`)}</div>` : !c.compose?.length && html`<p class="muted">No tracked app versions.</p>`}
+    <${ComposeApps} dr=${dr} c=${c} />
     ${retired(c) && html`<div class="whatsnew small" style=${BAD_BOX}>
       <b>The ${c.script} script was retired by community-scripts.</b> ${c.script_state.message || ""}
       <div class="muted" style="margin-top:4px">If it was replaced by another script, its update may ask a question before switching over (Jellyseerr and Overseerr ask to migrate to Seerr). lxcwatch can't answer prompts, so run <code>update</code> once yourself in the container's console, then rescan.</div></div>`}

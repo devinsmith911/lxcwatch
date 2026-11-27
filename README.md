@@ -4,7 +4,7 @@
 
 A web dashboard for keeping the LXCs in a Proxmox cluster up to date. For every container it shows the installed app version and the version available, pending package updates, and whether a newer Debian release is out. You can update one container or all of them from the page, with an optional snapshot first so you can roll back.
 
-It's built for containers created with the [Proxmox VE community-scripts](https://community-scripts.org), the ones with the `update` command inside. Other Debian, Ubuntu and Alpine containers still get package tracking and updates.
+It's built for containers created with the [Proxmox VE community-scripts](https://community-scripts.org), the ones with the `update` command inside, and for containers running apps with docker compose. Other Debian, Ubuntu and Alpine containers still get package tracking and updates.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
@@ -27,10 +27,11 @@ It's built for containers created with the [Proxmox VE community-scripts](https:
 
 - **One view of the whole cluster.** lxcwatch connects to your Proxmox nodes over SSH, with nothing installed in the containers. For each container it shows:
   - the installed and available app version, with links to the release notes, including apps installed with apt such as Jellyfin or Plex;
+  - newer images for apps run with docker compose, per service;
   - pending package updates, with security updates flagged, and package sources that failed to refresh;
   - whether services need a restart to pick up updated libraries;
   - whether a newer Debian release is available.
-- **Updates from the browser.** It runs the community-script `update`, upgrades packages, does Debian release upgrades (e.g. 12 → 13) or restarts the container, and streams the log live.
+- **Updates from the browser.** It runs the community-script `update`, pulls new images for compose apps, upgrades packages, does Debian release upgrades (e.g. 12 → 13) or restarts the container, and streams the log live.
 - **Update all.** It updates apps, packages or both across every container that needs it, one container at a time.
 - **Snapshots and rollback.** It can take a snapshot before any update, or whenever you like, and roll back with one click.
 - **Notifications.** New updates can go to ntfy, Pushover, Slack or a webhook, set up under **Notifications** in the menu. lxcwatch also tells you when there's a new version of itself.
@@ -137,6 +138,7 @@ lxcwatch reads its settings from environment variables, which the package keeps 
 | `LXCWATCH_REFRESH_PACKAGES` | `true` | Runs `apt-get update` / `apk update` during scans |
 | `LXCWATCH_KEEP_SNAPSHOTS` | `3` | `lxcwatch-*` snapshots kept per container (`0` = keep all) |
 | `LXCWATCH_JOB_CONCURRENCY` | `2` | How many jobs can run at the same time |
+| `LXCWATCH_DOCKER_PRUNE` | `false` | Remove unused (dangling) images after updating compose apps |
 | `LXCWATCH_GITHUB_TOKEN` | — | Recommended once you have more than about 15 apps: GitHub allows 60 requests/hour without a token. It's also passed to `update` inside the containers, so app updates don't hit the limit either |
 | `LXCWATCH_NTFY_URL` / `_TOKEN` | — | ntfy topic URL and optional access token |
 | `LXCWATCH_PUSHOVER_TOKEN` / `_USER` | — | Pushover application token and user key. Long messages are cut to Pushover's 1024-character limit |
@@ -167,6 +169,7 @@ A GitHub token only needs public read access: a fine-grained token with no extra
   - a failed update pauses that container until you resume it or a manual update succeeds;
   - the container running lxcwatch keeps its own package as is and isn't restarted.
 - **Fresh data:** scheduled scans cache release data for a few hours to stay within GitHub's rate limit. **Scan now** and **Rescan** always fetch fresh data.
+- **Docker compose apps:** lxcwatch finds compose projects from their containers' labels, so stacks started from any folder are picked up, and only while their containers exist. An update runs `docker compose pull` and `up -d` in the project's folder with its compose files, then waits up to 90 seconds for the containers to be running and healthy; one that keeps restarting, is unhealthy or exited with an error fails the update. A tag that names a version (`postgres:16.4`) stays on it: lxcwatch only reports rebuilds of that tag and never edits your compose files. Images from registries that need a login show as unknown, and images built locally (`build:`) as built locally. Containers started with plain `docker run` aren't tracked.
 - **Status labels:** **Untracked** means a version file the app's script doesn't refer to. **Unknown** means the version couldn't be determined. **Lists stale** means a package source failed to refresh, so updates from it may be missing.
 
 ## How it works
@@ -177,6 +180,7 @@ A GitHub token only needs public read access: a fine-grained token with no extra
   - the installed app versions, from the `/root/.<app>` files the scripts write;
   - pending packages;
   - processes still using replaced libraries.
+- **Compose apps:** the probe also lists Docker's containers and images (`docker inspect`). lxcwatch then asks each image's registry which digest its tag points to now; if it isn't the one the image was pulled as, there's a newer image. These checks use the registry's anonymous access and don't count towards Docker Hub's pull limit.
 - **Available version:** lxcwatch reads the container's script from the community-scripts repository, finds the GitHub, Codeberg or GitLab repo it installs from, and asks for the latest release. If the script pins a version (as Immich's does), that pin is what `update` installs, so lxcwatch shows the pin.
 - **Updates** run as small job scripts started detached on the Proxmox node, so restarting lxcwatch never interrupts one. lxcwatch follows each job's log and rescans the container when it finishes.
 

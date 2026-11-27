@@ -69,6 +69,7 @@ class Config:
     cf_access_aud: str | None
     cf_access_emails: frozenset[str]  # lowercase; these sign in as the one account
     shell: bool = True  # the in-browser root shell for each container
+    docker_prune: bool = False  # remove dangling images after updating compose apps
 
     @property
     def sudo(self) -> bool:
@@ -129,4 +130,5 @@ def load() -> Config:
         cf_access_aud=cf_access_aud,
         cf_access_emails=cf_access_emails,
         shell=_bool("SHELL", True),
+        docker_prune=_bool("DOCKER_PRUNE", False),
     )

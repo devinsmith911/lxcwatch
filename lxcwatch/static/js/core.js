@@ -101,8 +101,12 @@ export const AUTO_NAME = Object.fromEntries(AUTO_POLICIES.map(([k, , long]) => [
 
 // Rules for reading a container record.
 export const needsUpdate = c => c.outdated > 0 || c.pkg_count > 0;
-// Scanned fine, but there's no community-scripts `update` in it.
-export const notScript = c => !!c.os && !c.script;
+// Apps run with docker compose; their services are components with source "compose".
+export const hasCompose = c => c.compose?.length > 0;
+// The app update has something to run: community-scripts `update` or docker compose.
+export const canAppUpdate = c => !!c.script || hasCompose(c);
+// Scanned fine, but there's no community-scripts `update` or compose app in it.
+export const notScript = c => !!c.os && !canAppUpdate(c);
 // A community-script (or not yet scanned) container whose app version we can't tell.
 export const isUnknown = c => c.status === "running" && !notScript(c) && (!c.scanned_at || !c.os
   || (c.components.length > 0 && c.components.every(x => x.state === "unknown" || x.state === "untracked")));
@@ -110,7 +114,7 @@ export const rowState = c => c.status !== "running" ? "stopped" : c.pkg_security
 // community-scripts reports removed scripts as state "deleted" or found: false with a message.
 export const retired = c => !!c.script_state && (c.script_state.state === "deleted" || (c.script_state.found === false && !!c.script_state.message));
 export const problem = c => c.error || c.failures?.some(f => !f.superseded) || c.upstream_errors.length || c.components.some(x => x.pending) || retired(c) || c.last_job?.status === "failed" || c.pkg_stale;
-export const appPending = c => c.status === "running" && c.script && c.outdated > 0;
+export const appPending = c => c.status === "running" && canAppUpdate(c) && c.outdated > 0;
 export const osPending = c => c.status === "running" && c.pkgmgr && c.pkg_count > 0;
 export const container = vmid => state.data.containers.find(c => c.vmid === vmid);
 

@@ -155,7 +155,7 @@ def plan(containers: list[dict], policies: dict[int, dict], settings: dict, now:
             continue
         own = bool(c.get("lxcwatch_host"))
         mine: list[dict] = []
-        if policy == "app" and c.get("script"):
+        if policy == "app" and (c.get("script") or c.get("compose")):
             outdated = [x for x in c["components"] if x["state"] == "outdated"]
             young = [x for x in outdated if release_age(x, now) < min_age]
             if young:

@@ -359,3 +359,4 @@ a.ext::after { content: " ↗"; font-size: .85em; }
   .pkgs { columns: 1; }
 }
 #app { display: contents; }
+.compose .sectionhead { margin: 12px 0 6px; }

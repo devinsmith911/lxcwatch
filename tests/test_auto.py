@@ -196,3 +196,15 @@ def test_window_end_stops_the_run(tmp_path):
     steps = up.last_run()["steps"]
     assert steps[0]["status"] == "success"
     assert {s["note"] for s in steps[1:]} == {"the maintenance window ended"}
+
+
+def test_plan_compose_app():
+    # No community-script, only docker compose apps: the app policy still covers them.
+    old = {"name": "immich/immich-server", "source": "compose", "state": "outdated", "target": "v1.131.0",
+           "first_seen": NOW - 5 * 86400}
+    cts = [ct(7, script=None, compose=[{"name": "immich", "working_dir": "/opt/immich"}], components=[old])]
+    steps, skipped = auto.plan(cts, {7: {"policy": "app"}}, settings(), NOW, {})
+    assert [(s["vmid"], s["kind"], s["snapshot"]) for s in steps] == [(7, "app", True)] and not skipped
+    young = {**old, "first_seen": NOW - 3600}
+    steps, skipped = auto.plan([{**cts[0], "components": [young]}], {7: {"policy": "app"}}, settings(), NOW, {})
+    assert not steps and "waiting for immich/immich-server v1.131.0" in skipped[0]["reason"]

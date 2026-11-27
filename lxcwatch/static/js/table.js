@@ -1,5 +1,5 @@
 // The main view: filter pills, toolbar, batch progress, the container table and paging.
-import { AUTO_NAME, AUTO_POLICIES, COLUMNS, DEFAULT_COLUMNS, Ext, KIND_LABEL, STEP_BADGE, ago, api, duration, html, isUnknown, needsUpdate, notScript, post, problem, retired, rowState, state, store, until, update, useLayoutEffect, useRef } from "./core.js";
+import { AUTO_NAME, AUTO_POLICIES, COLUMNS, DEFAULT_COLUMNS, Ext, KIND_LABEL, STEP_BADGE, ago, api, canAppUpdate, duration, html, isUnknown, needsUpdate, notScript, post, problem, retired, rowState, state, store, until, update, useLayoutEffect, useRef } from "./core.js";
 import { attempt, openDetails, openDialog, openJob, refresh, setAutoPolicy, startUpdate } from "./actions.js";
 import { openUpdateAll } from "./dialogs.js";
 
@@ -255,7 +255,7 @@ function SortHeader({ k }) {
 const Toolbar = () => html`<div class="toolbar">
   <input type="search" id="q" placeholder="Filter by name, ID, node, tag" value=${state.q} onInput=${e => { state.q = e.target.value; state.page = 1; update(); }} />
   <label class="toggle chip"><input type="checkbox" id="hidestopped" checked=${state.hideStopped} onChange=${toggleSetting("hideStopped")} /> Hide stopped</label>
-  <label class="toggle chip" title="Containers that weren't installed with community-scripts (no update command)"><input type="checkbox" id="hidenonscript" checked=${state.hideNonScript} onChange=${toggleSetting("hideNonScript")} /> Hide non-scripts</label>
+  <label class="toggle chip" title="Containers with no community-scripts update command and no docker compose apps"><input type="checkbox" id="hidenonscript" checked=${state.hideNonScript} onChange=${toggleSetting("hideNonScript")} /> Hide non-scripts</label>
   <${ColumnPicker} />
   <${SortPicker} />
   <span class="spacer"></span>
@@ -321,11 +321,31 @@ function Component({ x }) {
   return html`<div class="comp">${name} ${x.installed ?? "?"} <span class="badge info">${x.state === "untracked" ? "untracked" : "unknown"}</span></div>`;
 }
 
+// A docker compose app: one line per project, with its services in Details.
+function ComposeProject({ name, xs }) {
+  const tag = html` <span class="badge" title="Runs with docker compose">compose</span>`;
+  const out = xs.filter(x => x.state === "outdated");
+  if (out.length) {
+    const what = out.length === 1 ? html`${out[0].service} ${out[0].installed} <span class="arrow">→ ${out[0].target}</span>`
+      : html`<span class="arrow">${out.length} of ${xs.length} images to update</span>`;
+    return html`<div class="comp" title=${out.map(x => `${x.service}: ${x.installed} → ${x.target}`).join("\n")}>${name}${tag} ${what}</div>`;
+  }
+  const unknown = xs.filter(x => x.state === "unknown");
+  if (unknown.length) {
+    return html`<div class="comp" title=${unknown.map(x => `${x.service}: ${x.error || "couldn't check"}`).join("\n")}>${name}${tag} <span class="badge info">unknown</span></div>`;
+  }
+  if (xs.some(x => x.state === "current")) return html`<div class="comp">${name}${tag} <span class="badge ok">current</span></div>`;
+  return html`<div class="comp" title="Its images were built locally, so there's no registry to check">${name}${tag} <span class="badge info">untracked</span></div>`;
+}
+
 function AppCell({ c }) {
   if (c.status !== "running" && !c.components.length) return html`<span class="muted dash">—</span>`;
-  if (!c.script && !c.components.length) return html`<span class="badge info">not a community-script</span>`;
+  if (!canAppUpdate(c) && !c.components.length) return html`<span class="badge info">not a community-script</span>`;
   const pending = c.components.some(x => x.pending), gone = retired(c);
-  return html`${c.components.map(x => html`<${Component} key=${x.name} x=${x} />`)}
+  const own = c.components.filter(x => x.source !== "compose");
+  const projects = (c.compose || []).map(p => [p.name, c.components.filter(x => x.source === "compose" && x.project === p.name)]).filter(([, xs]) => xs.length);
+  return html`${own.map(x => html`<${Component} key=${x.name} x=${x} />`)}
+    ${projects.map(([name, xs]) => html`<${ComposeProject} key=${`compose:${name}`} name=${name} xs=${xs} />`)}
     ${pending && html`<span class="badge bad">last update did not finish</span>`}
     ${gone && html`<span class="badge bad" title=${c.script_state.message || undefined}>script retired</span>`}
     ${!c.components.length && !pending && !gone && html`<span class="muted small">${c.script} · updates via packages</span>`}`;
@@ -379,7 +399,7 @@ function Row({ c }) {
     ${state.columns.map(k => CELLS[k](c, rs))}
     <td class="c-actions"><div class="actions">
       ${busy ? html`<span class="badge warn">updating…</span>` : c.last_job?.status === "failed" && html`<span class="badge bad">last ${KIND_LABEL[c.last_job.kind] || c.last_job.kind} failed</span>`}
-      ${running && !busy && c.script && (c.outdated || c.components.some(x => x.missing_version)) ? html`<button class="primary" onClick=${() => startUpdate("app", [c.vmid])}>Update app</button>` : null}
+      ${running && !busy && canAppUpdate(c) && (c.outdated || c.components.some(x => x.missing_version)) ? html`<button class="primary" onClick=${() => startUpdate("app", [c.vmid])}>Update app</button>` : null}
       ${running && !busy && c.pkgmgr && c.pkg_count ? html`<button onClick=${() => startUpdate("os", [c.vmid])}>Update packages</button>` : null}
       <button onClick=${() => openDetails(c.vmid)}>Details</button>
     </div></td></tr>`;
@@ -426,7 +446,7 @@ function Pager() {
 }
 
 function bulkUpdate(kind) {
-  const ids = state.data.containers.filter(c => state.selected.has(c.vmid) && c.status === "running" && !c.job && (kind === "os" ? c.pkgmgr : c.script)).map(c => c.vmid);
+  const ids = state.data.containers.filter(c => state.selected.has(c.vmid) && c.status === "running" && !c.job && (kind === "os" ? c.pkgmgr : canAppUpdate(c))).map(c => c.vmid);
   if (!ids.length) return alert("None of the selected containers can run that update.");
   startUpdate(kind, ids);
 }

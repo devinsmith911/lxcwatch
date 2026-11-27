@@ -286,6 +286,9 @@ def _summary(ct: dict, policies: dict[int, dict] | None = None, last_run: dict |
         "script_page": f"{cfg.website_url}/scripts/{info['slug']}" if info.get("slug") else None,
         "script_state": info.get("script_state"),
         "components": comps,
+        # Apps run with docker compose; their services are components with source "compose".
+        "compose": [{"name": p["name"], "working_dir": p["working_dir"]} for p in info.get("compose_projects", [])],
+        "docker": info.get("docker"),
         "outdated": sum(1 for c in comps if c["state"] == "outdated"),
         "packages": pkgs,
         "pkg_count": len(pkgs),

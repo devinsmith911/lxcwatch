@@ -10,6 +10,7 @@ import httpx
 from .config import Config
 from .db import DB
 from .probe import parse_probe, probe_script
+from .registry import Registry, compose_components
 from .release import debian_stable, release_info
 from .ssh import SSH
 from . import __version__
@@ -37,6 +38,7 @@ def stored_self_update(db: DB) -> dict | None:
 class Cluster:
     def __init__(self, cfg: Config, ssh: SSH, db: DB, upstream: Upstream):
         self.cfg, self.ssh, self.db, self.upstream = cfg, ssh, db, upstream
+        self.registry = Registry(upstream)
         self.nodes: dict[str, str] = {}
         self.scan_lock = asyncio.Lock()
         self.scanning: set[int] = set()
@@ -214,6 +216,11 @@ class Cluster:
         for comp in info["components"]:
             if comp.get("target_tag") and comp.get("repo"):
                 comp["published"] = self.upstream.published.get((comp["forge"], comp["repo"], comp["target_tag"]))
+        # Apps run with docker compose. Before the apt fallback, which would
+        # otherwise list docker-ce and friends as the container's apps.
+        info["components"] += await compose_components(self.registry, info)
+        info.pop("docker_containers", None)
+        info.pop("docker_images", None)
         info["components"] += package_components(
             info.pop("app_packages", []), [info["script"], info["slug"], info.get("script_app")],
             info["packages"], info["components"], info.get("os_id"), info.get("os_codename"))

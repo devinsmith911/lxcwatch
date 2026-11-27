@@ -127,8 +127,8 @@ class Batches:
         if ct["status"] != "running":
             step["status"], step["note"] = "skipped", f"container is {ct['status']}"
             return
-        if step["kind"] == "app" and not info.get("script"):
-            step["status"], step["note"] = "skipped", "not a community-script"
+        if step["kind"] == "app" and not info.get("script") and not info.get("compose_projects"):
+            step["status"], step["note"] = "skipped", "not a community-script or compose app"
             return
         if step["kind"] == "os" and not info.get("pkgmgr"):
             step["status"], step["note"] = "skipped", "no package manager found"

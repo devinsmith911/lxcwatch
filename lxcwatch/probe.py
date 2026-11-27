@@ -126,13 +126,35 @@ if [ -f /var/run/reboot-required ]; then echo "reboot_required=1"; fi
 if [ -d /opt/lxcwatch/venv ]; then echo "lxcwatch_host=1"; fi
 stale=$(__STALE__)
 if [ -n "$stale" ]; then echo "stale_procs=$stale"; fi
+__DOCKER__
 echo "probe_ok=1"
+"""
+
+# Docker: every container (compose labels say which project and service it
+# belongs to) and the images they run, with the digests each was pulled as.
+# Go templates print the fields; __T__ is a tab. A stopped daemon (or no
+# docker at all) skips this quietly.
+PROBE_DOCKER = r"""
+if command -v docker >/dev/null 2>&1; then
+  dv=$(timeout 15 docker version --format '{{.Server.Version}}' 2>/dev/null)
+  if [ -n "$dv" ]; then
+    echo "docker=$dv"
+    ids=$(timeout 30 docker ps -aq --no-trunc 2>/dev/null | head -n 200)
+    if [ -n "$ids" ]; then
+      timeout 30 docker inspect --format 'dctr:{{index .Config.Labels "com.docker.compose.project"}}__T__{{index .Config.Labels "com.docker.compose.service"}}__T__{{index .Config.Labels "com.docker.compose.project.working_dir"}}__T__{{index .Config.Labels "com.docker.compose.project.config_files"}}__T__{{index .Config.Labels "com.docker.compose.oneoff"}}__T__{{.Name}}__T__{{.Config.Image}}__T__{{.Image}}__T__{{.State.Status}}' $ids 2>/dev/null
+      imgs=$(timeout 30 docker inspect --format '{{.Image}}' $ids 2>/dev/null | sort -u)
+      if [ -n "$imgs" ]; then
+        timeout 30 docker image inspect --format 'dimg:{{.Id}}__T__{{join .RepoDigests " "}}__T__{{with .Config}}{{index .Labels "org.opencontainers.image.version"}}{{end}}__T__{{with .Config}}{{index .Labels "org.opencontainers.image.source"}}{{end}}__T__{{.Os}}__T__{{.Architecture}}' $imgs 2>/dev/null
+      fi
+    fi
+  fi
+fi
 """
 
 
 def probe_script(refresh: bool) -> str:
     return (PROBE.replace("__REFRESH__", "1" if refresh else "0").replace("__STALE__", STALE_PROCS)
-            .replace("__DEBIAN__", PROBE_DEBIAN))
+            .replace("__DEBIAN__", PROBE_DEBIAN).replace("__DOCKER__", PROBE_DOCKER.replace("__T__", '{{"\\t"}}')))
 
 
 # "W: Failed to fetch <url>  <reason>" (apt) and "WARNING: fetching <url>: <reason>" (apk).
@@ -193,6 +215,9 @@ def parse_probe(text: str) -> dict:
         "vertimes": {},  # version file path -> mtime
         "app_packages": [],  # [{name, version, origin, homepage}] candidates for apt-installed apps
         "lxcwatch_host": False,
+        "docker": None,  # the Docker Engine version, if docker runs in the container
+        "docker_containers": [],  # [{project, service, working_dir, config_files, name, image, image_id, state}]
+        "docker_images": {},  # image id -> {digests, version, source, os, arch}
         "probe_ok": False,
     }
     for line in text.splitlines():
@@ -210,6 +235,19 @@ def parse_probe(text: str) -> dict:
                 info["app_packages"].append({"name": name, "version": version,
                                              "origin": None if origin in ("", "-") else origin,
                                              "homepage": homepage or None})
+        elif line.startswith("dctr:"):
+            f = (line[5:].split("\t") + [""] * 9)[:9]
+            if f[4].lower() == "true":  # `docker compose run` one-offs come and go
+                continue
+            info["docker_containers"].append({
+                "project": f[0] or None, "service": f[1] or None, "working_dir": f[2] or None,
+                "config_files": [x for x in f[3].split(",") if x], "name": f[5].lstrip("/"),
+                "image": f[6], "image_id": f[7], "state": f[8]})
+        elif line.startswith("dimg:"):
+            f = (line[5:].split("\t") + [""] * 6)[:6]
+            if f[0]:
+                info["docker_images"][f[0]] = {"digests": f[1].split(), "version": f[2] or None,
+                                               "source": f[3] or None, "os": f[4] or None, "arch": f[5] or None}
         elif line.startswith("embedded:"):
             info["embedded"].append(line[9:])
         elif line.startswith("vertime:"):
