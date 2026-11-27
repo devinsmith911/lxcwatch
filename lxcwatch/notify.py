@@ -141,7 +141,7 @@ def collect(cfg: Config, db: DB) -> tuple[list[dict], list[str]]:
         info = ct["info"]
         if not info:
             continue
-        label = f"{ct['vmid']} {ct['name']}"
+        label = f"{ct['vmid']} {ct['name']}" + (" (VM)" if ct.get("type") == "qemu" else "")
         for comp in info.get("components", []):
             if comp["state"] != "outdated":
                 continue
@@ -170,7 +170,7 @@ async def send(cfg: Config, db: DB, http: httpx.AsyncClient) -> None:
     lines, keys = collect(cfg, db)
     if not lines:
         return
-    title = f"{len(lines)} LXC update{'s' if len(lines) != 1 else ''} available"
+    title = f"{len(lines)} update{'s' if len(lines) != 1 else ''} available"
     if await deliver(cfg, db, http, title, lines, tags="package"):
         for key in keys:
             db.mark_notified(key)

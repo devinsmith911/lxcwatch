@@ -48,7 +48,7 @@ def test_pushover_sends_once(cfg):
     assert str(req.url) == notify.PUSHOVER_URL
     form = dict(urllib.parse.parse_qsl(req.content.decode()))
     assert form["token"] == "apptoken" and form["user"] == "userkey"
-    assert form["title"] == "2 LXC updates available"
+    assert form["title"] == "2 updates available"
     assert "101 ct101: app 1.0 → 2.0" in form["message"] and "2 security updates" in form["message"]
     assert form["url"] == "https://lxcwatch.example" and form["url_title"] == "Open lxcwatch"
     assert send(cfg, db) == []  # already announced
@@ -140,7 +140,7 @@ def test_slack_from_ui_settings(tmp_path, monkeypatch):
     [req] = send(cfg, db)
     assert str(req.url) == "https://hooks.slack.com/services/T/B/secret"
     text = json.loads(req.content)["text"]
-    assert text.startswith("*2 LXC updates available*")
+    assert text.startswith("*2 updates available*")
     assert "• 101 ct101: app 1.0 → 2.0 (<https://github.com/x/app/releases/tag/v2.0-101|release notes>)" in text
     assert "a&lt;b&gt;&amp;c: 1 security update" in text
     assert text.endswith("<https://lxc.example|Open lxcwatch>")
@@ -208,3 +208,13 @@ def test_send_test_reports_each_channel(tmp_path, monkeypatch):
     # A redirect is a failure, not a GET of wherever it points.
     [r] = asyncio.run(go({"webhook_url": "https://moved.example/x"}))
     assert not r["ok"] and "redirected" in r["error"]
+
+
+def test_vms_are_marked(cfg):
+    db = DB(cfg.data_dir)
+    db.upsert_seen(200, "pve1", "ubuntu-dev", "running", "", type="qemu")
+    db.save_scan(200, {"components": [], "packages": [{"name": "openssl", "from": "1", "to": "2", "security": True}]}, None)
+    add_ct(db, 101, outdated=True)
+    lines, _ = notify.collect(cfg, db)
+    texts = [l["text"] for l in lines]
+    assert "200 ubuntu-dev (VM): 1 security update" in texts and "101 ct101: app 1.0 → 2.0" in texts
