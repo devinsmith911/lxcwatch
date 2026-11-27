@@ -68,6 +68,9 @@ class DB:
             if "started_at" not in cols:
                 self.conn.execute("ALTER TABLE containers ADD COLUMN started_at REAL")
                 self.conn.commit()
+            if "type" not in cols:  # lxc or qemu (VMs, since 2.7)
+                self.conn.execute("ALTER TABLE containers ADD COLUMN type TEXT NOT NULL DEFAULT 'lxc'")
+                self.conn.commit()
             cols = {r[1] for r in self.conn.execute("PRAGMA table_info(jobs)")}
             if "auto" not in cols:
                 self.conn.execute("ALTER TABLE jobs ADD COLUMN auto INTEGER NOT NULL DEFAULT 0")
@@ -83,12 +86,14 @@ class DB:
 
     # containers
 
-    def upsert_seen(self, vmid: int, node: str, name: str, status: str, tags: str, started_at: float | None = None) -> None:
+    def upsert_seen(self, vmid: int, node: str, name: str, status: str, tags: str, started_at: float | None = None,
+                    type: str = "lxc") -> None:
         self._exec(
-            """INSERT INTO containers (vmid, node, name, status, tags, seen_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO containers (vmid, node, name, status, tags, seen_at, started_at, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT (vmid) DO UPDATE SET node=excluded.node, name=excluded.name,
-               status=excluded.status, tags=excluded.tags, seen_at=excluded.seen_at, started_at=excluded.started_at""",
-            (vmid, node, name, status, tags, time.time(), started_at),
+               status=excluded.status, tags=excluded.tags, seen_at=excluded.seen_at, started_at=excluded.started_at,
+               type=excluded.type""",
+            (vmid, node, name, status, tags, time.time(), started_at, type),
         )
 
     def save_scan(self, vmid: int, info: dict | None, error: str | None) -> None:

@@ -13,7 +13,7 @@ export function store(key, value) {
 // Table columns, in display order: [key, label, shown by default]. The select
 // box and the actions are always there.
 export const COLUMNS = [
-  ["container", "Container", true],
+  ["container", "Guest", true],
   ["node", "Node", true],
   ["tags", "Tags", true],
   ["app", "App", true],
@@ -102,6 +102,7 @@ export const AUTO_NAME = Object.fromEntries(AUTO_POLICIES.map(([k, , long]) => [
 
 // Rules for reading a container record.
 export const needsUpdate = c => c.outdated > 0 || c.pkg_count > 0;
+export const isVM = c => c.type === "qemu";
 // Apps run with docker compose; their services are components with source "compose".
 export const hasCompose = c => c.compose?.length > 0;
 // The app update has something to run: community-scripts `update` or docker compose.

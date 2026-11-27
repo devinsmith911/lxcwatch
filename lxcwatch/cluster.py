@@ -9,6 +9,7 @@ import httpx
 
 from .config import Config
 from .db import DB
+from .guest import AGENT_DOWN, TIMED_OUT, TYPES, exec_cmd, tool
 from .probe import parse_probe, probe_script
 from .registry import Registry, compose_components
 from .release import debian_stable, release_info
@@ -33,6 +34,21 @@ def stored_self_update(db: DB) -> dict | None:
     if not (mine and theirs and theirs > mine):
         return None
     return {**found, "current": __version__}
+
+
+def probe_error(kind: str, r) -> str:
+    """Why a scan got no probe output, in words."""
+    err = r.err.strip()
+    if kind == "qemu" and r.rc == AGENT_DOWN:
+        if "not running" in err or "No QEMU guest agent configured" in err or "not configured" in err:
+            return ("the QEMU guest agent isn't available: install qemu-guest-agent in the VM and enable "
+                    "Options → QEMU Guest Agent in Proxmox, then restart the VM")
+        return f"the QEMU guest agent didn't answer: {err or 'no reply'}"
+    if kind == "qemu" and r.rc == TIMED_OUT:
+        return "the scan took too long in the VM"
+    if kind == "qemu" and r.rc == 127:
+        return "this VM has no sh (not Linux?), so it can't be scanned"
+    return err or f"probe exited with {r.rc}"
 
 
 class Cluster:
@@ -93,12 +109,13 @@ class Cluster:
         self.nodes = nodes
         self.node_info = sorted(info, key=lambda n: n["name"])
         resources = await self.pvesh("/cluster/resources --type vm")
-        cts = [r for r in resources if r.get("type") == "lxc" and not r.get("template") and r.get("node") not in self.cfg.ignore_nodes]
+        cts = [r for r in resources if r.get("type") in TYPES and not r.get("template") and r.get("node") not in self.cfg.ignore_nodes]
         for ct in cts:
             # Proxmox reports uptime in seconds for running containers.
             uptime = ct.get("uptime") if ct.get("status") == "running" else None
             started_at = time.time() - uptime if uptime else None
-            self.db.upsert_seen(int(ct["vmid"]), ct["node"], ct.get("name") or "", ct.get("status") or "", ct.get("tags") or "", started_at)
+            self.db.upsert_seen(int(ct["vmid"]), ct["node"], ct.get("name") or "", ct.get("status") or "", ct.get("tags") or "",
+                                started_at, ct["type"])
         self.db.forget_missing({int(ct["vmid"]) for ct in cts})
         return cts
 
@@ -172,12 +189,15 @@ class Cluster:
             return
         self.scanning.add(vmid)
         try:
-            script = probe_script(self.cfg.refresh_packages)
-            r = await self.ssh.run(await self.resolve(row["node"]), f"pct exec {vmid} -- sh -c {shlex.quote(script)}", timeout=300)
+            kind = row.get("type") or "lxc"
+            script = probe_script(self.cfg.refresh_packages, kind)
+            r = await self.ssh.run(await self.resolve(row["node"]), exec_cmd(kind, vmid, script, timeout=280), timeout=300)
             info = parse_probe(r.out)
             if not info["probe_ok"]:
-                raise RuntimeError(r.err.strip() or f"probe exited with {r.rc}")
+                raise RuntimeError(probe_error(kind, r))
             await self._resolve(info)
+            if kind == "qemu":
+                info["release"] = None  # Debian release upgrades are for containers only, for now
             # These only reach the dashboard otherwise; the scan itself succeeded.
             for err in info["upstream_errors"]:
                 log.warning("scan of %s: %s", vmid, err)
@@ -253,7 +273,7 @@ class Cluster:
         row = self.db.container(vmid)
         if not row:
             raise KeyError(vmid)
-        snaps = await self.pvesh(f"/nodes/{row['node']}/lxc/{vmid}/snapshot", host=await self.resolve(row["node"]))
+        snaps = await self.pvesh(f"/nodes/{row['node']}/{row.get('type') or 'lxc'}/{vmid}/snapshot", host=await self.resolve(row["node"]))
         return sorted((s for s in snaps if s.get("name") != "current"), key=lambda s: s.get("snaptime") or 0, reverse=True)
 
     async def delete_snapshot(self, vmid: int, name: str) -> None:
@@ -262,6 +282,7 @@ class Cluster:
         row = self.db.container(vmid)
         if not row:
             raise KeyError(vmid)
-        r = await self.ssh.run(await self.resolve(row["node"]), f"pct delsnapshot {vmid} {name}", timeout=600)
+        cli = tool(row.get("type") or "lxc")
+        r = await self.ssh.run(await self.resolve(row["node"]), f"{cli} delsnapshot {vmid} {name}", timeout=600)
         if not r.ok:
-            raise RuntimeError(r.err.strip() or f"pct delsnapshot exited with {r.rc}")
+            raise RuntimeError(r.err.strip() or f"{cli} delsnapshot exited with {r.rc}")

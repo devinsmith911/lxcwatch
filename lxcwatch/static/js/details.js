@@ -1,5 +1,5 @@
 // The container details panel in the drawer.
-import { AUTO_POLICIES, Ext, KIND_LABEL, STEP_BADGE, api, canAppUpdate, duration, fmtWhen, html, jobBadge, post, retired, state, update } from "./core.js";
+import { AUTO_POLICIES, Ext, KIND_LABEL, STEP_BADGE, api, canAppUpdate, isVM, duration, fmtWhen, html, jobBadge, post, retired, state, update } from "./core.js";
 import { attempt, openDetails, openJob, refresh, runJob, setAutoPolicy, startUpdate } from "./actions.js";
 import { openReleaseUpgrade, openSettings, openSnapshot } from "./dialogs.js";
 import { openShell } from "./shell.js";
@@ -170,7 +170,8 @@ async function rescan(c) {
 }
 
 function restart(vmid) {
-  if (!confirm(`Restart CT ${vmid}? Its services will be briefly unavailable.`)) return;
+  const c = state.data.containers.find(x => x.vmid === vmid);
+  if (!confirm(`Restart ${isVM(c) ? "VM" : "CT"} ${vmid}? Its services will be briefly unavailable.`)) return;
   runJob(`/api/containers/${vmid}/restart`, vmid);
 }
 
@@ -186,7 +187,7 @@ export function Details({ dr }) {
       <button disabled=${!running || busy || !c.pkgmgr} class=${c.pkg_count ? "primary" : ""} onClick=${() => startUpdate("os", [c.vmid])}>Update packages</button>
       <button disabled=${!running || busy} class=${c.restart_needed ? "primary" : ""} onClick=${() => restart(c.vmid)}>Restart</button>
       <button disabled=${c.scanning || !running} onClick=${() => rescan(c)}>${c.scanning ? "Scanning…" : "Rescan"}</button>
-      ${state.data.shell && html`<button disabled=${!running} title=${running ? "Open a root shell in this container" : "Start the container first"} onClick=${() => openShell(c.vmid)}>Shell</button>`}
+      ${state.data.shell && !isVM(c) && html`<button disabled=${!running} title=${running ? "Open a root shell in this container" : "Start the container first"} onClick=${() => openShell(c.vmid)}>Shell</button>`}
       ${c.job && html`<button data-job=${c.job} onClick=${() => openJob(c.job, c.vmid)}>Live log</button>`}
     </div>
     <${Uptime} c=${c} />
@@ -202,7 +203,9 @@ export function Details({ dr }) {
       <div class="muted" style="margin-top:4px">If it was replaced by another script, its update may ask a question before switching over (Jellyseerr and Overseerr ask to migrate to Seerr). lxcwatch can't answer prompts, so run <code>update</code> once yourself in the container's console, then rescan.</div></div>`}
     ${missing.length > 0 && html`<p class="whatsnew small">${missing.map((x, i) => html`${i > 0 && " "}<b>${x.name}</b> has no version file (<code>${x.version_file}</code>) yet, so lxcwatch can't tell which version is installed. This is normal right after a script migration. The next app update installs the latest release and records it.`)}</p>`}
     ${(c.failures || []).map(f => html`<${Failure} key=${f.file} c=${c} f=${f} />`)}
-    ${c.restart_needed && html`<p class="whatsnew small"><b>Restart needed.</b> ${c.stale_procs.length ? html`These are still running code that an update replaced: <code>${c.stale_procs.join(", ")}</code>` : "The container reports that it needs a reboot."}</p>`}
+    ${c.restart_needed && html`<p class="whatsnew small"><b>Restart needed.</b>${" "}
+      ${c.kernel_installed && html`Kernel ${c.kernel_installed} is installed, but the VM is still running ${c.kernel}.${" "}`}
+      ${c.stale_procs.length ? html`These are still running code that an update replaced: <code>${c.stale_procs.join(", ")}</code>` : !c.kernel_installed && `The ${isVM(c) ? "VM" : "container"} reports that it needs a reboot.`}</p>`}
     ${c.release && html`<h3>Release upgrade</h3><div class="whatsnew small"><div class="head">
       <span><b>Debian ${c.release.current} (${c.release.from}) → ${c.release.target} (${c.release.to})</b> is available${c.release.target < c.release.stable ? `, one step towards Debian ${c.release.stable}` : ""}.</span>${" "}
       <button class="primary" disabled=${!running || busy} onClick=${() => openReleaseUpgrade(c)}>Upgrade to Debian ${c.release.target}</button></div>

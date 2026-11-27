@@ -49,7 +49,7 @@ export async function openDetails(vmid) {
   const c = container(vmid);
   if (!c) return closeDrawer();
   const dr = openDrawer({ type: "ct", vmid, snaps: null, jobs: null, notes: {},
-    title: `${c.vmid} · ${c.name}`, sub: `${c.node} · ${c.os || ""}${c.script ? ` · ct/${c.script}.sh` : ""}` });
+    title: `${c.vmid} · ${c.name}`, sub: `${c.type === "qemu" ? "VM · " : ""}${c.node} · ${c.os || ""}${c.script ? ` · ct/${c.script}.sh` : ""}` });
   const [snaps, jobs] = await Promise.allSettled([api(`/api/containers/${vmid}/snapshots`), api(`/api/jobs?vmid=${vmid}`)]);
   dr.snaps = snaps;
   dr.jobs = jobs;

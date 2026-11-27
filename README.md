@@ -2,9 +2,9 @@
 
 # lxcwatch
 
-A web dashboard for keeping the LXCs in a Proxmox cluster up to date. For every container it shows the installed app version and the version available, pending package updates, and whether a newer Debian release is out. You can update one container or all of them from the page, with an optional snapshot first so you can roll back.
+A web dashboard for keeping the LXCs and VMs in a Proxmox cluster up to date. For every container and VM it shows the installed app version and the version available, pending package updates, and whether a newer Debian release is out. You can update one container or all of them from the page, with an optional snapshot first so you can roll back.
 
-It's built for containers created with the [Proxmox VE community-scripts](https://community-scripts.org), the ones with the `update` command inside, and for containers running apps with docker compose. Other Debian, Ubuntu and Alpine containers still get package tracking and updates.
+It's built for containers created with the [Proxmox VE community-scripts](https://community-scripts.org), the ones with the `update` command inside, and for containers running apps with docker compose. Other Debian, Ubuntu and Alpine containers, and Linux VMs with the QEMU guest agent, get package tracking and updates too.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
@@ -161,6 +161,7 @@ A GitHub token only needs public read access: a fine-grained token with no extra
 - **Shell:** a root shell in the container, through the same SSH connection lxcwatch uses for updates. Closing the window ends the session, and with it anything still running in the foreground, so use `screen`, `tmux` or `nohup` for long jobs. lxcwatch logs who opened a shell and when. Behind a reverse proxy, it needs WebSockets passed through, and if the proxy changes the `Host` header, set `LXCWATCH_PUBLIC_URL`: lxcwatch only accepts shell connections from its own address.
 - **Snapshots** need snapshot-capable storage (ZFS, LVM-thin, Ceph); if one can't be taken, the update doesn't run. Rolling back restores the whole container, including app data written since the snapshot. Only automatic `lxcwatch-*` snapshots are cleaned up.
 - **Restarts:** services keep running old libraries until they restart, shown as **restart needed**. Package updates can restart the container only if needed (the default), always, or never.
+- **VMs** are reached through the QEMU guest agent: install `qemu-guest-agent` in the VM, enable **Options → QEMU Guest Agent** in Proxmox, and restart the VM. Without it a VM is listed but can't be scanned. VMs get package updates, compose apps, snapshots, rollback and restarts, and **restart needed** also covers a newly installed kernel. Snapshots don't include the VM's memory, so rolling back restarts it from disk. Debian release upgrades and the shell are for containers only. Windows VMs are listed but not scanned.
 - **Debian release upgrades** run one major version at a time, never as part of Update all or automatic updates. lxcwatch runs pre-checks first and only switches official Debian sources, so third-party repositories stay on the old release.
 - **Automatic updates** run only in your maintenance window and only for containers you opt in:
   - app updates always take a snapshot first, and package updates do too unless you turn that off;
@@ -175,14 +176,14 @@ A GitHub token only needs public read access: a fine-grained token with no extra
 ## How it works
 
 - **Discovery:** `pvesh get /cluster/resources` on any node lists every LXC and its node; `/cluster/status` gives each node's address.
-- **Scan:** for each running container, `pct exec` runs a read-only probe that reports:
+- **Scan:** for each running container, `pct exec` runs a read-only probe that reports the list below. VMs get the same probe through the guest agent (`qm guest exec`):
   - which community-script created it, from `/usr/bin/update`;
   - the installed app versions, from the `/root/.<app>` files the scripts write;
   - pending packages;
   - processes still using replaced libraries.
 - **Compose apps:** the probe also lists Docker's containers and images (`docker inspect`). lxcwatch then asks each image's registry which digest its tag points to now; if it isn't the one the image was pulled as, there's a newer image. These checks use the registry's anonymous access and don't count towards Docker Hub's pull limit.
 - **Available version:** lxcwatch reads the container's script from the community-scripts repository, finds the GitHub, Codeberg or GitLab repo it installs from, and asks for the latest release. If the script pins a version (as Immich's does), that pin is what `update` installs, so lxcwatch shows the pin.
-- **Updates** run as small job scripts started detached on the Proxmox node, so restarting lxcwatch never interrupts one. lxcwatch follows each job's log and rescans the container when it finishes.
+- **Updates** run as small job scripts started detached on the Proxmox node (in a VM, the update itself also runs detached inside the VM, and lxcwatch reads its log through the guest agent), so restarting lxcwatch never interrupts one. lxcwatch follows each job's log and rescans the container when it finishes.
 
 ## Building from source
 

@@ -17,7 +17,8 @@ import time
 from .cluster import SNAPSHOT_NAME_RE, Cluster
 from .config import Config
 from .db import DB
-from .probe import STALE_PROCS
+from .guest import GX, label, run_line, tool
+from .probe import KERNEL_CHECK, STALE_PROCS
 from .release import job_command as release_job_command
 from .ssh import SSH
 
@@ -43,30 +44,35 @@ APP_CMD_TOKEN = "sh -c " + shlex.quote(
     "IFS= read -r GITHUB_TOKEN; export GITHUB_TOKEN; exec " + APP_CMD + " </dev/null"
 )
 CLEAR_FAILURES = "rm -f /root/.install-*.failed"
-OS_CMD = "sh -c " + shlex.quote(
+OS_SCRIPT = (
     "if command -v apt-get >/dev/null 2>&1; then "
     "export DEBIAN_FRONTEND=noninteractive; apt-get update && "
     "apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold dist-upgrade; "
     "elif command -v apk >/dev/null 2>&1; then apk -U upgrade; "
     "else echo 'no supported package manager'; exit 1; fi"
 )
+OS_CMD = "sh -c " + shlex.quote(OS_SCRIPT)
 
 
 PACKAGE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9+._-]*$")
 
 
-def os_cmd(packages: list[str] | None = None) -> str:
-    """Package update command: everything, or only `packages` (and what they need)."""
+def os_script(packages: list[str] | None = None) -> str:
+    """Package update script: everything, or only `packages` (and what they need)."""
     if not packages:
-        return OS_CMD
+        return OS_SCRIPT
     names = " ".join(packages)
-    return "sh -c " + shlex.quote(
+    return (
         "if command -v apt-get >/dev/null 2>&1; then "
         "export DEBIAN_FRONTEND=noninteractive; apt-get update && "
         "apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install --only-upgrade " + names + "; "
         "elif command -v apk >/dev/null 2>&1; then apk -U upgrade " + names + "; "
         "else echo 'no supported package manager'; exit 1; fi"
     )
+
+
+def os_cmd(packages: list[str] | None = None) -> str:
+    return "sh -c " + shlex.quote(os_script(packages))
 
 
 # Updates docker compose apps inside the container: pull each project's
@@ -111,7 +117,11 @@ update_project() {
 
 
 def compose_cmd(projects: list[dict], prune: bool = False) -> str:
-    """The command that updates `projects` ({name, working_dir, config_files})."""
+    return "sh -c " + shlex.quote(compose_script(projects, prune))
+
+
+def compose_script(projects: list[dict], prune: bool = False) -> str:
+    """The script that updates `projects` ({name, working_dir, config_files})."""
     q = shlex.quote
     lines = [COMPOSE_PREAMBLE]
     for p in projects:
@@ -120,7 +130,7 @@ def compose_cmd(projects: list[dict], prune: bool = False) -> str:
     if prune:
         lines.append("echo '[lxcwatch] removing unused images'; docker image prune -f")
     lines.append("exit $rc")
-    return "sh -c " + q("\n".join(lines))
+    return "\n".join(lines)
 
 
 def app_plan(info: dict) -> tuple[bool, list[dict]]:
@@ -149,18 +159,27 @@ def clean_line(raw: bytes) -> str:
 def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target: str | None,
                 token: bool = False, restart: str = "never", description: str | None = None,
                 packages: list[str] | None = None, run_script: bool = True, compose: list[dict] | None = None,
-                prune: bool = False) -> str:
+                prune: bool = False, guest: str = "lxc") -> str:
     q = shlex.quote
+    vm = guest == "qemu"
+    cli, what_ct, lbl = tool(guest), "VM" if vm else "container", label(guest)
+    token = token and not vm  # VMs: `update` runs without the token (no stdin through the agent)
+
+    def run(script: str) -> str:
+        return run_line(guest, vmid, job_id, script)
+
     token_file = f"{LOGDIR}/{job_id}.token"
     lines = [
         "#!/bin/bash",
         f"trap 'rm -f {token_file}' EXIT",
-        f"echo \"[lxcwatch] {kind} job {job_id} for CT {vmid} started $(date -Is)\"",
     ]
+    if vm:
+        lines.append(GX)
+    lines.append(f"echo \"[lxcwatch] {kind} job {job_id} for {lbl} {vmid} started $(date -Is)\"")
     if snapshot:
         lines += [
             f"echo '[lxcwatch] creating snapshot {snapshot}'",
-            f"if ! pct snapshot {vmid} {snapshot} --description {q(f'lxcwatch: before {kind} update')}; then",
+            f"if ! {cli} snapshot {vmid} {snapshot} --description {q(f'lxcwatch: before {kind} update')}; then",
             "  echo '[lxcwatch] snapshot failed, nothing was changed'",
             f"  echo '{MARK} 90'",
             "  exit 0",
@@ -175,6 +194,8 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
             "rc=$?",
             f"rm -f {token_file}",
         ]
+    elif kind == "app" and vm:
+        lines += ["echo '[lxcwatch] running community-scripts update'", run(APP_CMD), "rc=$?"]
     elif kind == "app":
         lines += [f"echo '[lxcwatch] running community-scripts update'", f"pct exec {vmid} -- {APP_CMD} </dev/null", "rc=$?"]
     if kind == "app":
@@ -182,7 +203,7 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
             # A successful update supersedes failure flags from earlier runs.
             lines += [
                 "if [ $rc -eq 0 ]; then",
-                f"  pct exec {vmid} -- sh -c {q(CLEAR_FAILURES)} </dev/null",
+                f"  {run(CLEAR_FAILURES)}",
                 "fi",
             ]
         if compose:
@@ -190,29 +211,32 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
             lines += [
                 "if [ $rc -eq 0 ]; then",
                 f"  echo {q(f'[lxcwatch] updating docker compose apps: {names}')}",
-                f"  pct exec {vmid} -- {compose_cmd(compose, prune)} </dev/null",
+                f"  {run(compose_script(compose, prune))}",
                 "  rc=$?",
                 "fi",
             ]
     elif kind == "os":
         what = f"updating {len(packages)} package{'s' if len(packages) != 1 else ''}: {' '.join(packages)}" if packages else "updating packages"
-        lines += [f"echo {q('[lxcwatch] ' + what)}", f"pct exec {vmid} -- {os_cmd(packages)} </dev/null", "rc=$?"]
+        lines += [f"echo {q('[lxcwatch] ' + what)}", run(os_script(packages)), "rc=$?"]
         if restart == "always":
             lines += [
                 "if [ $rc -eq 0 ]; then",
-                "  echo '[lxcwatch] restarting container'",
-                f"  pct reboot {vmid}; rc=$?",
+                f"  echo '[lxcwatch] restarting {what_ct}'",
+                f"  {cli} reboot {vmid}; rc=$?",
                 "fi",
             ]
         elif restart == "auto":
-            check = q(f'test -f /var/run/reboot-required && echo "(reboot-required)"; {STALE_PROCS}')
+            check = f'test -f /var/run/reboot-required && echo "(reboot-required)"; {STALE_PROCS}'
+            if vm:
+                check += f"; {KERNEL_CHECK}"
+            probe = f"qga {vmid} 60 {q(check)}" if vm else f"pct exec {vmid} -- sh -c {q(check)} </dev/null"
             lines += [
                 "if [ $rc -eq 0 ]; then",
-                f"  stale=$(pct exec {vmid} -- sh -c {check} </dev/null)",
+                f"  stale=$({probe})",
                 '  if [ -n "$(echo $stale)" ]; then',
                 '    echo "[lxcwatch] still running replaced code: $stale"',
-                "    echo '[lxcwatch] restarting container'",
-                f"    pct reboot {vmid}; rc=$?",
+                f"    echo '[lxcwatch] restarting {what_ct}'",
+                f"    {cli} reboot {vmid}; rc=$?",
                 "  else",
                 "    echo '[lxcwatch] no restart needed'",
                 "  fi",
@@ -233,22 +257,23 @@ def node_script(job_id: str, vmid: int, kind: str, snapshot: str | None, target:
             "fi",
         ]
     elif kind == "restart":
-        lines += ["echo '[lxcwatch] restarting container'", f"pct reboot {vmid}", "rc=$?"]
+        lines += [f"echo '[lxcwatch] restarting {what_ct}'", f"{cli} reboot {vmid}", "rc=$?"]
     elif kind == "snapshot":
         lines += [
             f"echo '[lxcwatch] creating snapshot {target}'",
-            f"pct snapshot {vmid} {target} --description {q(description or 'manual snapshot (lxcwatch)')}",
+            f"{cli} snapshot {vmid} {target} --description {q(description or 'manual snapshot (lxcwatch)')}",
             "rc=$?",
         ]
     elif kind == "rollback":
         lines += [
-            f"was_running=$(pct status {vmid} | grep -q running && echo 1)",
+            f"was_running=$({cli} status {vmid} | grep -q running && echo 1)",
             f"echo '[lxcwatch] rolling back to {target}'",
-            f"pct rollback {vmid} {target}",
+            f"{cli} rollback {vmid} {target}",
             "rc=$?",
-            f"if [ $rc -eq 0 ] && [ \"$was_running\" = 1 ] && ! pct status {vmid} | grep -q running; then",
-            "  echo '[lxcwatch] starting container'",
-            f"  pct start {vmid}; rc=$?",
+            # VM snapshots without RAM leave the VM stopped after a rollback.
+            f"if [ $rc -eq 0 ] && [ \"$was_running\" = 1 ] && ! {cli} status {vmid} | grep -q running; then",
+            f"  echo '[lxcwatch] starting {what_ct}'",
+            f"  {cli} start {vmid}; rc=$?",
             "fi",
         ]
     lines.append(f"echo \"[lxcwatch] finished $(date -Is) with exit code $rc\"")
@@ -287,17 +312,21 @@ class Jobs:
         row = self.db.container(vmid)
         if not row:
             raise JobError(f"CT {vmid} not found")
+        who = f"{label(row.get('type') or 'lxc')} {vmid}"
         if self.busy(vmid):
-            raise JobError(f"CT {vmid} already has a job running")
+            raise JobError(f"{who} already has a job running")
         if kind in ("app", "os", "restart", "release") and row["status"] != "running":
-            raise JobError(f"CT {vmid} is {row['status']}, start it first")
+            raise JobError(f"{who} is {row['status']}, start it first")
         run_script, compose = app_plan(row["info"] or {}) if kind == "app" else (False, [])
         if kind == "app" and not (run_script or compose):
-            raise JobError(f"CT {vmid} has no community-scripts update command or docker compose apps")
+            raise JobError(f"{who} has no community-scripts update command or docker compose apps")
+        guest = row.get("type") or "lxc"
+        if kind == "release" and guest == "qemu":
+            raise JobError("Debian release upgrades are only available for containers")
         if kind == "release":
             rel = (row["info"] or {}).get("release")
             if not rel:
-                raise JobError(f"CT {vmid} has no release upgrade available")
+                raise JobError(f"{who} has no release upgrade available")
             target = f"{rel['from']}:{rel['to']}"
         if kind == "snapshot":
             if not (target and SNAPSHOT_NAME_RE.match(target)):
@@ -316,7 +345,7 @@ class Jobs:
         self.db.create_job(job_id, vmid, row["node"], kind, snap or target, auto=auto)
         self.active[vmid] = job_id
         self._spawn(self._run(job_id, vmid, row["node"], kind, snap, target, restart if kind == "os" else "never", description, packages,
-                              run_script, compose))
+                              run_script, compose, guest))
         return job_id
 
     def resume(self) -> None:
@@ -344,14 +373,15 @@ class Jobs:
 
     async def _run(self, job_id: str, vmid: int, node: str, kind: str, snap: str | None, target: str | None, restart: str,
                    description: str | None = None, packages: list[str] | None = None,
-                   run_script: bool = False, compose: list[dict] | None = None) -> None:
+                   run_script: bool = False, compose: list[dict] | None = None, guest: str = "lxc") -> None:
         try:
             async with self.sem:
                 self.db.update_job(job_id, status="running")
                 addr = await self.cluster.resolve(node)
-                token = kind == "app" and run_script and bool(self.cfg.github_token)
+                token = kind == "app" and run_script and guest == "lxc" and bool(self.cfg.github_token)
                 script = node_script(job_id, vmid, kind, snap, target, token=token, restart=restart, description=description,
-                                     packages=packages, run_script=run_script, compose=compose, prune=self.cfg.docker_prune)
+                                     packages=packages, run_script=run_script, compose=compose, prune=self.cfg.docker_prune,
+                                     guest=guest)
                 base = f"{LOGDIR}/{job_id}"
                 prep = f"mkdir -p {LOGDIR} && chmod 700 {LOGDIR}"
                 if token:

@@ -374,3 +374,4 @@ button.pkgbadge:hover, button.pkgbadge[aria-expanded="true"] { box-shadow: 0 0 0
 .pkgpop .ver b { font-weight: 600; }
 .pkgpop .name { font-weight: 400; }
 .pkgpop .foot { display: flex; align-items: center; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--border); }
+.badge.vm { background: var(--accent-soft); color: var(--accent); font-weight: 600; letter-spacing: .02em; }

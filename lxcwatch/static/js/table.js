@@ -1,5 +1,5 @@
 // The main view: filter pills, toolbar, batch progress, the container table and paging.
-import { AUTO_NAME, AUTO_POLICIES, COLUMNS, DEFAULT_COLUMNS, Ext, KIND_LABEL, STEP_BADGE, ago, api, canAppUpdate, duration, html, isUnknown, needsUpdate, notScript, post, problem, retired, rowState, state, store, until, update, useLayoutEffect, useRef } from "./core.js";
+import { AUTO_NAME, AUTO_POLICIES, COLUMNS, DEFAULT_COLUMNS, Ext, KIND_LABEL, STEP_BADGE, ago, api, canAppUpdate, duration, html, isUnknown, isVM, needsUpdate, notScript, post, problem, retired, rowState, state, store, until, update, useLayoutEffect, useRef } from "./core.js";
 import { attempt, openDetails, openDialog, openJob, refresh, setAutoPolicy, startUpdate } from "./actions.js";
 import { openUpdateAll } from "./dialogs.js";
 
@@ -60,7 +60,8 @@ function visible() {
     if (state.filter === "packages" && !c.pkg_count) return false;
     if (state.filter === "security" && !c.pkg_security) return false;
     if (state.filter === "problems" && !problem(c)) return false;
-    if (q && ![c.vmid, c.name, c.node, ...c.tags, c.script].join(" ").toLowerCase().includes(q)) return false;
+    if (state.filter === "vms" && !isVM(c)) return false;
+    if (q && ![c.vmid, c.name, c.node, ...c.tags, c.script, isVM(c) ? "vm" : "ct"].join(" ").toLowerCase().includes(q)) return false;
     return true;
   }));
 }
@@ -89,6 +90,7 @@ const PILLS = [
   ["security", "Security", "--bad"],
   ["problems", "Problems", "--bad"],
   ["unknown", "Unknown", "--idle"],
+  ["vms", "VMs", "--accent"],  // only shown when the cluster has VMs
 ];
 
 function Stats() {
@@ -106,9 +108,9 @@ function Stats() {
   const running = cs.filter(c => c.status === "running").length;
   const n = { all: cs.length, updates: cs.filter(needsUpdate).length, app: cs.filter(c => c.outdated).length,
     packages: cs.filter(c => c.pkg_count).length, security: cs.filter(c => c.pkg_security).length,
-    problems: cs.filter(problem).length, unknown: cs.filter(isUnknown).length };
+    problems: cs.filter(problem).length, unknown: cs.filter(isUnknown).length, vms: cs.filter(isVM).length };
   // Each pill filters the table; clicking the active one shows everything again.
-  return html`<div class="pills" id="stats" role="group" aria-label="Filter containers" ref=${strip}>${PILLS.map(([f, label, color]) => {
+  return html`<div class="pills" id="stats" role="group" aria-label="Filter containers" ref=${strip}>${PILLS.filter(([f]) => f !== "vms" || n.vms).map(([f, label, color]) => {
     const live = n[f] || f === "all";
     return html`<button key=${f} class="pill${live ? "" : " zero"}${state.filter === f ? " active" : ""}" aria-pressed=${String(state.filter === f)}
       title=${f === "all" ? `${running} running · ${cs.length - running} stopped` : undefined}
@@ -340,7 +342,7 @@ function ComposeProject({ name, xs }) {
 
 function AppCell({ c }) {
   if (c.status !== "running" && !c.components.length) return html`<span class="muted dash">—</span>`;
-  if (!canAppUpdate(c) && !c.components.length) return html`<span class="badge info">not a community-script</span>`;
+  if (!canAppUpdate(c) && !c.components.length) return isVM(c) ? html`<span class="muted dash">—</span>` : html`<span class="badge info">not a community-script</span>`;
   const pending = c.components.some(x => x.pending), gone = retired(c);
   const own = c.components.filter(x => x.source !== "compose");
   const projects = (c.compose || []).map(p => [p.name, c.components.filter(x => x.source === "compose" && x.project === p.name)]).filter(([, xs]) => xs.length);
@@ -441,7 +443,7 @@ function AutoCell({ c }) {
 
 // The optional cells, by column key. Empty ones collapse on mobile.
 const CELLS = {
-  container: (c, rs) => html`<td class="c-container"><div class="name"><span class="dot" title=${rs}></span>${c.vmid} · ${c.name}${c.status !== "running" && html` <span class="badge">${c.status}</span>`}</div>
+  container: (c, rs) => html`<td class="c-container"><div class="name"><span class="dot" title=${rs}></span>${c.vmid} · ${c.name}${isVM(c) && html` <span class="badge vm" title="Virtual machine, reached through the QEMU guest agent">VM</span>`}${c.status !== "running" && html` <span class="badge">${c.status}</span>`}</div>
     ${c.os && html`<div class="small muted ctinfo">${c.os}</div>`}
     ${c.error && html`<div class="err small">${c.error}</div>`}</td>`,
   node: c => html`<td class="c-node"><span class="badge node">${c.node}</span></td>`,

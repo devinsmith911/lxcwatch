@@ -126,6 +126,14 @@ if [ -f /var/run/reboot-required ]; then echo "reboot_required=1"; fi
 if [ -d /opt/lxcwatch/venv ]; then echo "lxcwatch_host=1"; fi
 stale=$(__STALE__)
 if [ -n "$stale" ]; then echo "stale_procs=$stale"; fi
+# VMs run their own kernel: a newer one installed than running needs a reboot.
+# (Containers share the host's kernel, so this doesn't apply to them.)
+if [ "__GUEST__" = qemu ]; then
+  kr=$(uname -r)
+  echo "kernel=$kr"
+  kn=$(ls /lib/modules 2>/dev/null | sort -V 2>/dev/null | tail -n 1)
+  if [ -n "$kn" ] && [ "$kn" != "$kr" ]; then echo "kernel_installed=$kn"; fi
+fi
 __DOCKER__
 echo "probe_ok=1"
 """
@@ -152,8 +160,12 @@ fi
 """
 
 
-def probe_script(refresh: bool) -> str:
-    return (PROBE.replace("__REFRESH__", "1" if refresh else "0").replace("__STALE__", STALE_PROCS)
+# For the restart-if-needed check after package updates in a VM.
+KERNEL_CHECK = r"""kr=$(uname -r); kn=$(ls /lib/modules 2>/dev/null | sort -V 2>/dev/null | tail -n 1); if [ -n "$kn" ] && [ "$kn" != "$kr" ]; then echo "(kernel $kn)"; fi"""
+
+
+def probe_script(refresh: bool, guest: str = "lxc") -> str:
+    return (PROBE.replace("__REFRESH__", "1" if refresh else "0").replace("__GUEST__", guest).replace("__STALE__", STALE_PROCS)
             .replace("__DEBIAN__", PROBE_DEBIAN).replace("__DOCKER__", PROBE_DOCKER.replace("__T__", '{{"\\t"}}')))
 
 
@@ -215,6 +227,8 @@ def parse_probe(text: str) -> dict:
         "vertimes": {},  # version file path -> mtime
         "app_packages": [],  # [{name, version, origin, homepage}] candidates for apt-installed apps
         "lxcwatch_host": False,
+        "kernel": None,  # VMs: the running kernel
+        "kernel_installed": None,  # VMs: a newer installed kernel, if one is waiting for a reboot
         "docker": None,  # the Docker Engine version, if docker runs in the container
         "docker_containers": [],  # [{project, service, working_dir, config_files, name, image, image_id, state}]
         "docker_images": {},  # image id -> {digests, version, source, os, arch}

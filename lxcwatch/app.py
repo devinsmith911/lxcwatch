@@ -18,6 +18,7 @@ from .batch import BatchError, Batches
 from .cluster import Cluster, stored_self_update
 from .db import DB
 from .jobs import CLEAR_FAILURES, JobError, Jobs
+from .guest import exec_cmd
 from .release import HOST_CHECK, container_checks, host_checks
 from .ssh import SSH
 from .upstream import FORGE_WEB, Upstream, compare_url, releases_between
@@ -276,6 +277,7 @@ def _summary(ct: dict, policies: dict[int, dict] | None = None, last_run: dict |
     last = db.jobs(ct["vmid"], limit=1)
     return {
         "vmid": ct["vmid"],
+        "type": ct.get("type") or "lxc",
         "node": ct["node"],
         "name": ct["name"],
         "status": ct["status"],
@@ -310,7 +312,9 @@ def _summary(ct: dict, policies: dict[int, dict] | None = None, last_run: dict |
         "stale_procs": info.get("stale_procs", []),
         "release": info.get("release"),
         "failures": failures,
-        "restart_needed": bool(info.get("reboot_required") or info.get("stale_procs")),
+        "restart_needed": bool(info.get("reboot_required") or info.get("stale_procs") or info.get("kernel_installed")),
+        "kernel": info.get("kernel"),
+        "kernel_installed": info.get("kernel_installed"),
         "upstream_errors": info.get("upstream_errors", []),
         "error": ct["error"],
         "scanned_at": ct["scanned_at"],
@@ -520,7 +524,7 @@ async def clear_failures(vmid: int):
     if jobs.busy(vmid):
         raise HTTPException(409, "a job is running on this container")
     addr = await cluster.resolve(ct["node"])
-    r = await ssh.run(addr, f"pct exec {vmid} -- sh -c {shlex.quote(CLEAR_FAILURES)}", timeout=60)
+    r = await ssh.run(addr, exec_cmd(ct.get("type") or "lxc", vmid, CLEAR_FAILURES), timeout=60)
     if not r.ok:
         raise HTTPException(502, r.err.strip() or f"exit {r.rc}")
     await cluster.scan_one(vmid)
@@ -692,6 +696,7 @@ async def container_shell(ws: WebSocket, vmid: int, cols: int = 80, rows: int = 
     await ws.accept()
     ct = db.container(vmid)
     error = ("container not found" if not ct
+             else "The shell is only available for containers." if ct.get("type") == "qemu"
              else f"CT {vmid} is {ct['status']}; start it first." if ct["status"] != "running" else None)
     if not error:
         try:
