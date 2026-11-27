@@ -432,8 +432,28 @@ def test_package_components_homepage_and_fallbacks():
     # A tracked app ignores unrelated vendor packages (Node.js from NodeSource)...
     assert package_components([_pkg("nodejs")], ["immich"], [], tracked) == []
     # ...but with nothing else to show, vendor packages are the best guess.
-    comps = package_components([_pkg("libfoo1"), _pkg("nodejs"), _pkg("bash", origin=None)], [None], [], [])
-    assert [c["name"] for c in comps] == ["nodejs"]
+    comps = package_components([_pkg("libfoo1"), _pkg("cloudflared"), _pkg("bash", origin=None)], [None], [], [])
+    assert [c["name"] for c in comps] == ["cloudflared"]
+
+
+def test_package_components_skip_infrastructure():
+    docker = [_pkg(n, origin="Docker") for n in ("docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin",
+                                                  "docker-compose-plugin")]
+    # A Docker LXC (or VM) has no app of its own: Docker isn't one.
+    assert package_components(docker + [_pkg("nodejs"), _pkg("nvidia-container-toolkit")], [None], [], []) == []
+    assert package_components(docker, ["docker", "docker"], [], []) == []
+    # Named exactly after the script, it is the app.
+    [c] = package_components([_pkg("postgresql", origin=None), _pkg("postgresql-17", origin=None)], ["postgresql"], [], [])
+    assert c["name"] == "postgresql"
+    [c] = package_components([_pkg("redis-tools"), _pkg("redis-server")], ["redis"], [], [])
+    assert c["name"] == "redis-server"
+
+
+def test_version_files_skip_image_references():
+    from lxcwatch.upstream import build_components
+    comps = build_components([], {"/root/.immich_base_image": "ghcr.io/immich-app/base-server-dev:202610291416@sha256:" + "5" * 64,
+                                  "/root/.tool": "https://example.com/v1", "/root/.app": "3.4.2", "/root/.sha": "3f9a1c" * 6 + "ab12"}, {})
+    assert sorted(c["name"] for c in comps) == ["app", "sha"]
 
 
 def test_parse_probe_app_packages():

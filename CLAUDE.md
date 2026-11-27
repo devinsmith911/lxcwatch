@@ -40,8 +40,9 @@ packaging/build-deb.sh               # local .deb, versioned <last tag>+dev<n>.<
 - App updates run `env PHS_SILENT=1 TERM=xterm-256color update`. `TERM=dumb`, or no TERM at all, makes the scripts' `clear` exit 1 and kills the update.
 - The GitHub token reaches `update` through stdin (`APP_CMD_TOKEN`), never through argv or the job script.
 - In remote shell commands, a trailing `&` backgrounds the whole `&&` chain, which then reads stdin from `/dev/null`. Wrap it: `{ nohup … & }`.
-- Version files (`/root/.<app>`) only count if their value is one token containing a digit. That filters out `.hushlogin`, and `.install-*.failed` files are failure flags, not versions.
+- Version files (`/root/.<app>`) only count if their value is one token containing a digit, at most 64 characters, with no `/` or `@` (Immich's `.immich_base_image` holds an image reference). That filters out `.hushlogin`, and `.install-*.failed` files are failure flags, not versions.
 - `/usr/bin/update` has three forms: `UPDATE_SCRIPT_NAME` exports, a legacy `…/ct/<name>.sh` URL, or a full copy of the ct script (name taken from `APP=`).
+- Packages matching `upstream.INFRA_RE` (Docker, containerd, Node.js, PostgreSQL...) are never a container's app by fallback or prefix match, only when a script is named exactly after them.
 - Apps installed with apt are found from `/var/lib/apt/lists`: a repo whose Release `Origin` isn't Debian/Ubuntu is a vendor repo. Indexes can be stored compressed (`Packages.lz4`, the default in Docker's Debian image), so read them with `apt-helper cat-file`.
 - Snapshots: automatic ones are `lxcwatch-*` and get pruned (`KEEP_SNAPSHOTS`); `manual-*` and any other name are never pruned.
 - Manual scans set `upstream.FRESH_SINCE` (a context variable), so cached upstream data older than the scan is refetched once per scan. Scheduled scans use the cache.

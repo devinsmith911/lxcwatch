@@ -157,8 +157,13 @@ def releases_between(releases: list[dict], installed: str | None, target: str | 
 
 
 def looks_like_version(value: str | None) -> bool:
-    """A single token with a digit in it; rules out marker files like ~/.hushlogin."""
-    return bool(value) and not any(c.isspace() for c in value) and any(c.isdigit() for c in value)
+    """A single token with a digit in it; rules out marker files like ~/.hushlogin.
+
+    Image references, URLs and paths aren't versions either (Immich's script
+    records its base image, ghcr.io/...@sha256:..., in /root/.immich_base_image).
+    """
+    return (bool(value) and len(value) <= 64 and not any(c.isspace() for c in value)
+            and any(c.isdigit() for c in value) and not any(c in value for c in "/@"))
 
 
 def build_components(checks: list[Check], versions: dict[str, str], latest: dict[tuple[str, str], str | None]) -> list[dict]:
@@ -229,6 +234,12 @@ PACKAGE_REPOS = {
     "caddy": "caddyserver/caddy", "nodejs": "nodejs/node", "syncthing": "syncthing/syncthing",
 }
 NOT_AN_APP_RE = re.compile(r"^lib|-(common|data|doc|dev|dbg)$")
+# Container engines, runtimes and databases that apps run on rather than apps
+# themselves. They stay pending packages; they only count as the app when a
+# script is named exactly after them (ct/postgresql.sh).
+INFRA_RE = re.compile(r"^(docker-|docker\.io$|containerd|runc$|nvidia-container|libnvidia-container|podman|"
+                      r"nodejs$|yarn$|postgresql|pgdg-|mysql-|mariadb-|mongodb-|redis|valkey|"
+                      r"intel-|level-zero|intel-opencl)")
 DISTROS = {"debian": ("Debian", "https://packages.debian.org"), "ubuntu": ("Ubuntu", "https://packages.ubuntu.com")}
 
 
@@ -260,7 +271,7 @@ def package_components(pkgs: list[dict], names: list[str | None], pending: list[
                 return (0, 0)
             if p["name"] == f"{n}-server":
                 return (1, 0)
-        if any(p["name"].startswith(n) for n in names):
+        if any(p["name"].startswith(n) for n in names) and not INFRA_RE.search(p["name"]):
             return (2, p["origin"] is None, len(p["name"]))
         return None
 
@@ -269,7 +280,7 @@ def package_components(pkgs: list[dict], names: list[str | None], pending: list[
         picked = [related[0][2]]
     elif not components:
         picked = [p for p in sorted(pkgs, key=lambda p: p["name"])
-                  if p["origin"] and not NOT_AN_APP_RE.search(p["name"])][:5]
+                  if p["origin"] and not NOT_AN_APP_RE.search(p["name"]) and not INFRA_RE.search(p["name"])][:5]
     else:
         picked = []
     upgrades = {p["name"]: p["to"] for p in pending}
