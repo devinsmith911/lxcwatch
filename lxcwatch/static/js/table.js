@@ -357,7 +357,75 @@ function PackagesCell({ c }) {
     ${c.restart_needed && html` <span class="badge warn" title=${c.stale_procs.length ? `Still running replaced code: ${c.stale_procs.join(", ")}` : "The container asks for a reboot"}>restart needed</span>`}
     ${c.release && html` <span class="badge info" title="Release upgrade available, see Details">Debian ${c.release.target} available</span>`}`;
   if (!c.pkg_count) return html`${!c.pkg_stale && html`<span class="badge ok">up to date</span>`}${extras}`;
-  return html`<span class="badge warn">${c.pkg_count} pending</span>${c.pkg_security > 0 && html` <span class="badge bad">${c.pkg_security} security</span>`}${extras}`;
+  const open = state.pkgPop?.vmid === c.vmid;
+  return html`<button type="button" class="badge warn pkgbadge" aria-haspopup="dialog" aria-expanded=${open} title=${open ? undefined : "Show the packages"}
+      onMouseEnter=${e => hoverable() && showPkgs(e, c.vmid, false)} onMouseLeave=${() => hidePkgs()} onClick=${e => showPkgs(e, c.vmid, true)}>${c.pkg_count} pending</button>${
+    c.pkg_security > 0 && html` <span class="badge bad">${c.pkg_security} security</span>`}${extras}`;
+}
+
+// ---- Which packages: a popover on the "N pending" badge ----
+// It lives outside the table (fixed position), so the table's sideways
+// scrolling doesn't clip it. Hover shows it with a mouse; a click or tap pins it.
+const PKG_LIMIT = 15;
+const hoverable = () => matchMedia("(hover: hover)").matches;
+let pkgTimer;
+
+function showPkgs(e, vmid, pin) {
+  clearTimeout(pkgTimer);
+  const cur = state.pkgPop;
+  if (pin && cur?.vmid === vmid && cur.pinned) return closePkgs();
+  const r = e.currentTarget.getBoundingClientRect();
+  state.pkgPop = { vmid, pinned: pin || (cur?.vmid === vmid && cur.pinned), below: r.bottom + 6, above: r.top - 6, left: r.left };
+  update();
+}
+function hidePkgs() {
+  clearTimeout(pkgTimer);
+  pkgTimer = setTimeout(() => { if (state.pkgPop && !state.pkgPop.pinned) closePkgs(); }, 200);
+}
+export function closePkgs() {
+  clearTimeout(pkgTimer);
+  if (!state.pkgPop) return;
+  state.pkgPop = null;
+  update();
+}
+
+// The new version, with the part it shares with the old one muted:
+// 2.41-12 → 2.41-12+deb13u1 shows as 2.41-12 (muted) +deb13u1.
+function PkgVersion({ x }) {
+  if (!x.from) return html`<span class="ver" title="New package, ${x.to}"><span class="badge">new</span> ${x.to}</span>`;
+  let n = 0;
+  while (n < x.from.length && n < x.to.length && x.from[n] === x.to[n]) n++;
+  // Don't split a number: back up to the start of the run of digits.
+  while (n > 0 && /[0-9a-z]/i.test(x.to[n - 1]) && /[0-9a-z]/i.test(x.to[n] || "")) n--;
+  return html`<span class="ver" title="${x.from} → ${x.to}"><span class="same">${x.to.slice(0, n)}</span><b>${x.to.slice(n)}</b></span>`;
+}
+
+function PkgPop() {
+  const p = state.pkgPop, ref = useRef();
+  const c = p && state.data?.containers.find(x => x.vmid === p.vmid);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Below the badge, or above it when there's more room there; kept on screen.
+    const h = el.offsetHeight, w = el.offsetWidth;
+    const top = p.below + h > innerHeight - 8 && p.above - h > 8 ? p.above - h : Math.max(8, Math.min(p.below, innerHeight - h - 8));
+    el.style.top = `${top}px`;
+    el.style.left = `${Math.max(8, Math.min(p.left, innerWidth - w - 8))}px`;
+  });
+  if (!c || !c.pkg_count) return null;
+  const pkgs = [...c.packages].sort((a, b) => b.security - a.security);
+  const shown = pkgs.slice(0, PKG_LIMIT), more = pkgs.length - shown.length;
+  const canUpdate = c.status === "running" && !c.job && c.pkgmgr;
+  return html`<div class="pkgpop" ref=${ref} role="dialog" aria-label="Package updates for ${c.vmid} ${c.name}"
+      onMouseEnter=${() => clearTimeout(pkgTimer)} onMouseLeave=${() => hidePkgs()}>
+    <div class="head"><b>${c.pkg_count} package update${c.pkg_count === 1 ? "" : "s"}</b>${c.pkg_security > 0 && html` <span class="badge bad">${c.pkg_security} security</span>`}</div>
+    <ul>${shown.map(x => html`<li key=${x.name} class=${x.security ? "sec" : undefined}>
+      <span class="name" title=${x.name}>${x.security ? "⚠ " : ""}${x.name}</span>
+      <${PkgVersion} x=${x} /></li>`)}</ul>
+    <div class="foot">${more > 0 && html`<span class="muted small">and ${more} more</span>`}<span class="spacer"></span>
+      <button class="small" onClick=${() => { closePkgs(); openDetails(c.vmid); }}>Details</button>
+      ${canUpdate && html`<button class="small primary" onClick=${() => { closePkgs(); startUpdate("os", [c.vmid]); }}>Update packages</button>`}</div>
+  </div>`;
 }
 
 const AUTO_SHORT = Object.fromEntries(AUTO_POLICIES.map(([k, short]) => [k, short]));
@@ -478,4 +546,5 @@ export const Dashboard = () => html`<main>
   <${Table} />
   <${Pager} />
 </main>
-<${Bulk} />`;
+<${Bulk} />
+<${PkgPop} />`;

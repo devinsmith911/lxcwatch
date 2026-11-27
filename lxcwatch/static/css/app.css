@@ -360,3 +360,17 @@ a.ext::after { content: " ↗"; font-size: .85em; }
 }
 #app { display: contents; }
 .compose .sectionhead { margin: 12px 0 6px; }
+/* The "N pending" badge opens a popover listing the packages. */
+button.pkgbadge { font-family: inherit; border: 0; cursor: pointer; }
+button.pkgbadge:hover, button.pkgbadge[aria-expanded="true"] { box-shadow: 0 0 0 1px currentColor inset; }
+.pkgpop { position: fixed; z-index: 9; width: max-content; min-width: 260px; max-width: min(400px, calc(100vw - 16px)); max-height: min(60vh, 480px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.2); font-size: 13px; }
+.pkgpop .head { display: flex; align-items: center; gap: 6px; padding: 10px 12px 8px; border-bottom: 1px solid var(--border); }
+.pkgpop ul { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; }
+.pkgpop li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 3px 12px; }
+.pkgpop li.sec { background: color-mix(in srgb, var(--bad) 9%, transparent); }
+.pkgpop .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkgpop .ver { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; max-width: 210px; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.pkgpop .ver .same { color: var(--muted); }
+.pkgpop .ver b { font-weight: 600; }
+.pkgpop .name { font-weight: 400; }
+.pkgpop .foot { display: flex; align-items: center; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--border); }

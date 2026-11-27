@@ -5,7 +5,7 @@ import { Dialogs } from "./dialogs.js";
 import { Drawer } from "./drawer.js";
 import { Header } from "./header.js";
 import { Shell } from "./shell.js";
-import { Dashboard } from "./table.js";
+import { Dashboard, closePkgs } from "./table.js";
 
 const root = document.querySelector("#app");
 const draw = () => render(html`<${Header} /><${Dashboard} /><${Drawer} /><${Dialogs} /><${Shell} />`, root);
@@ -24,10 +24,14 @@ document.addEventListener("click", e => {
     const el = document.querySelector(`#${id}`);
     if (el && !e.target.closest(`#${id}`)) el.open = false;
   }
+  if (state.pkgPop && !e.target.closest(".pkgpop, .pkgbadge")) closePkgs();
 });
 document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && state.pkgPop) return closePkgs();
   if (e.key === "Escape" && state.drawer && !document.querySelector("#confirm[open]")) closeDrawer();
 });
+// The package popover is placed against its badge, so it can't follow a scroll.
+addEventListener("scroll", e => { if (state.pkgPop && !e.target.closest?.(".pkgpop")) closePkgs(); }, true);
 
 refresh();
 setInterval(refresh, 5000);

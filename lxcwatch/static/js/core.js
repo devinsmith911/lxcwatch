@@ -41,6 +41,7 @@ export const state = {
   columns: storedColumns(), colWidths: storedWidths(),
   sort: stored("sort", null),  // {key, dir} or null for the server's order
   bulkSnapshot: false, batchStopping: false, activityFilter: "all",
+  pkgPop: null,  // the package popover: {vmid, pinned, below, above, left}
 };
 
 // Views read `state` directly; call update() after changing it.

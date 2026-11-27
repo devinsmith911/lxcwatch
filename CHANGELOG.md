@@ -6,6 +6,7 @@
 - **Apps run with docker compose.** In containers running Docker, lxcwatch finds each compose project and checks every service's image against its registry (Docker Hub, GitHub, lscr.io, Quay and other public registries), so a newer image under the same tag shows as an app update. Versions come from Docker Hub's tags or the image's version label where it has one, and images whose labels name their GitHub repository link to its release notes.
 - **Update app** pulls the new images and recreates those containers (`docker compose pull` and `up -d` in the project's folder), then checks that they come back up and are healthy. Only projects with a newer image are touched, and in a community-scripts container that only has outdated images, `update` isn't run. Update all, notifications and the **App and packages** automatic update policy include compose apps, with the usual snapshot and release wait.
 - `LXCWATCH_DOCKER_PRUNE=true` removes unused (dangling) images after updating compose apps. It's off by default.
+- The **N pending** badge in the Packages column lists the pending packages: hover it, or tap it on a phone. Security updates come first, and each version shows what changed. **Update packages** and **Details** are right there.
 
 ## 2.6.2 (2026-11-25)
 
